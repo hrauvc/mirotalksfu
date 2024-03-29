@@ -291,6 +291,10 @@ module.exports = {
         region: '',
         bucket: 'nombre-de-tu-bucket', // Reemplaza esto con el nombre real de tu bucket en S3
     },
+    ffmpeg: {
+        ffmpegPath: '/usr/bin/ffmpeg',
+        ffprobePath: '/usr/bin/ffprobe',
+    },
     chatGPT: {
         /*
         ChatGPT

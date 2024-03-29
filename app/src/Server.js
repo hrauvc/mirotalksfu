@@ -80,6 +80,11 @@ const slackEnabled = config.slack.enabled;
 const slackSigningSecret = config.slack.signingSecret;
 const bodyParser = require('body-parser');
 
+// FFMPEG
+const ffmpeg = require('fluent-ffmpeg');
+ffmpeg.setFfmpegPath(config.ffmpeg.ffmpegPath);
+ffmpeg.setFfprobePath(config.ffmpeg.ffprobePath);
+
 // AWS
 const AWS = require('aws-sdk');
 AWS.config.update({
@@ -669,40 +674,47 @@ function startServer() {
         }
     
         const { fileName } = req.query;
-    
-        if (!fileName) {
-            return res.status(400).send('Filename not provided');
-        }
-    
         const filePath = path.join(dir.rec, fileName);
-    
+        const outputFileName = fileName.replace(path.extname(fileName), '.mp4');
+        const outputPath = path.join(dir.rec, outputFileName);
+
         // Comprueba si el archivo existe
         if (!fs.existsSync(filePath)) {
             return res.status(404).send('File not found');
         }
-    
-        // Lee el archivo del sistema de archivos
-        const fileContent = fs.readFileSync(filePath);
 
-        const params = {
-            Bucket: config.aws.bucket,
-            Key: 'recordings/' + fileName,
-            Body: fileContent,
-        };
+        ffmpeg(filePath)
+            .output(outputPath)
+            .on('end', function() {
+                console.log('Conversion Successful');
 
-        // Sube el archivo a S3
-        s3.upload(params, function(err, data) {
-            if (err) {
-                log.error('Error uploading file to S3:', err.message);
-                return res.status(500).send('Error uploading file');
-            }
-            // Devuelve la URL del archivo subido
-            res.json({ 
-                url: data.Location,
-                path: params.Key
-            });
-            log.debug('File uploaded successfully to S3:', { fileName: fileName, url: data.Location });
-        });
+                const fileContent = fs.readFileSync(outputPath);
+
+                const params = {
+                    Bucket: config.aws.bucket,
+                    Key: 'recordings/' + outputFileName,
+                    Body: fileContent,
+                };
+
+                // Sube el archivo a S3
+                s3.upload(params, function(err, data) {
+                    if (err) {
+                        log.error('Error uploading file to S3:', err.message);
+                        return res.status(500).send('Error uploading file');
+                    }
+                    // Devuelve la URL del archivo subido
+                    res.json({ 
+                        url: data.Location,
+                        path: params.Key
+                    });
+                    log.debug('File uploaded successfully to S3:', { fileName: outputFileName, url: data.Location });
+                });
+            })
+            .on('error', function(err) {
+                console.log('Error converting file:', err.message);
+                res.status(500).send('Error processing file');
+            })
+            .run();
     });
 
     app.post([restApi.basePath + '/generate-presigned-url'], (req, res) => {
