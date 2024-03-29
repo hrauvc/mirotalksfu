@@ -363,3 +363,7 @@ input[type='text'] {
     margin-top: 0px;
     margin-bottom: 10px;
 }
+
+.text-start pre {
+    text-wrap: pretty !important;
+}
