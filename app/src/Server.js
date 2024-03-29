@@ -688,7 +688,6 @@ function startServer() {
             Bucket: config.aws.bucket,
             Key: 'recordings/' + fileName,
             Body: fileContent,
-            ACL: 'public-read' 
         };
 
         // Sube el archivo a S3
@@ -721,8 +720,10 @@ function startServer() {
             log.debug('Generate Presigned URL - Unauthorized', { header: req.headers });
             return res.status(403).json({ error: 'Unauthorized!' });
         }
+
+        console.log(req.body);
     
-        const { objectPath } = req.body; // La ruta del objeto en el bucket de S3, por ejemplo "bootcamps/rec/miArchivo.mp3"
+        const { objectPath } = req.query; // La ruta del objeto en el bucket de S3, por ejemplo "bootcamps/rec/miArchivo.mp3"
     
         if (!objectPath) {
             return res.status(400).send('Object path not provided');
