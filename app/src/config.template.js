@@ -82,6 +82,8 @@ module.exports = {
             meeting: true,
             join: true,
             token: false,
+            s3Upload: false,
+            generatePresignedUrl: false,
             slack: true,
             //...
         },
@@ -282,6 +284,12 @@ module.exports = {
         */
         enabled: false,
         signingSecret: '',
+    },
+    aws: {
+        accessKeyId: '',
+        secretAccessKey: '',
+        region: '',
+        Bucket: 'nombre-de-tu-bucket', // Reemplaza esto con el nombre real de tu bucket en S3
     },
     chatGPT: {
         /*

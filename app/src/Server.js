@@ -80,6 +80,16 @@ const slackEnabled = config.slack.enabled;
 const slackSigningSecret = config.slack.signingSecret;
 const bodyParser = require('body-parser');
 
+// AWS
+const AWS = require('aws-sdk');
+AWS.config.update({
+    accessKeyId: config.aws.accessKeyId,
+    secretAccessKey: config.aws.secretAccessKey,
+    region: config.aws.region,
+});
+const s3 = new AWS.S3();
+
+// APP
 const app = express();
 
 const options = {
@@ -638,6 +648,101 @@ function startServer() {
             header: req.headers,
             body: req.body,
             token: token,
+        });
+    });
+
+    // AWS Upload
+    app.post([restApi.basePath + '/s3-upload'], (req, res) => {
+        // Check if endpoint allowed
+        if (restApi.allowed && !restApi.allowed.s3Upload) {
+            return res.status(403).json({
+                error: 'This endpoint has been disabled. Please contact the administrator for further information.',
+            });
+        }
+    
+        // Check if user was authorized for the api call
+        const { host, authorization } = req.headers;
+        const api = new ServerApi(host, authorization);
+        if (!api.isAuthorized()) {
+            log.debug('Upload Recording to S3 - Unauthorized', { header: req.headers });
+            return res.status(403).json({ error: 'Unauthorized!' });
+        }
+    
+        const { fileName } = req.query;
+    
+        if (!fileName) {
+            return res.status(400).send('Filename not provided');
+        }
+    
+        const filePath = path.join(dir.rec, fileName);
+    
+        // Comprueba si el archivo existe
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('File not found');
+        }
+    
+        // Lee el archivo del sistema de archivos
+        const fileContent = fs.readFileSync(filePath);
+
+        const params = {
+            Bucket: config.aws.bucket,
+            Key: 'recordings/' + fileName,
+            Body: fileContent,
+            ACL: 'public-read' 
+        };
+
+        // Sube el archivo a S3
+        s3.upload(params, function(err, data) {
+            if (err) {
+                log.error('Error uploading file to S3:', err.message);
+                return res.status(500).send('Error uploading file');
+            }
+            // Devuelve la URL del archivo subido
+            res.json({ 
+                url: data.Location,
+                path: params.Key
+            });
+            log.debug('File uploaded successfully to S3:', { fileName: fileName, url: data.Location });
+        });
+    });
+
+    app.post([restApi.basePath + '/generate-presigned-url'], (req, res) => {
+        // Chequea si el endpoint está permitido
+        if (restApi.allowed && !restApi.allowed.generatePresignedUrl) {
+            return res.status(403).json({
+                error: 'This endpoint has been disabled. Please contact the administrator for further information.',
+            });
+        }
+    
+        // Chequea si el usuario fue autorizado para la llamada a la API
+        const { host, authorization } = req.headers;
+        const api = new ServerApi(host, authorization);
+        if (!api.isAuthorized()) {
+            log.debug('Generate Presigned URL - Unauthorized', { header: req.headers });
+            return res.status(403).json({ error: 'Unauthorized!' });
+        }
+    
+        const { objectPath } = req.body; // La ruta del objeto en el bucket de S3, por ejemplo "bootcamps/rec/miArchivo.mp3"
+    
+        if (!objectPath) {
+            return res.status(400).send('Object path not provided');
+        }
+    
+        const params = {
+            Bucket: config.aws.bucket, // El nombre de tu bucket en S3
+            Key: objectPath, // La ruta del objeto en el bucket
+            Expires: 60 * 5 // Tiempo en segundos hasta que la URL expire, por ejemplo 5 minutos
+        };
+    
+        // Genera la URL autofirmada
+        s3.getSignedUrl('getObject', params, (err, url) => {
+            if (err) {
+                log.error('Error generating presigned URL:', err.message);
+                return res.status(500).send('Error generating presigned URL');
+            }
+            // Devuelve la URL autofirmada
+            res.json({ url });
+            log.debug('Presigned URL generated successfully:', { objectPath: objectPath, url: url });
         });
     });
 

@@ -40,6 +40,7 @@
     "dependencies": {
         "@sentry/integrations": "7.108.0",
         "@sentry/node": "7.108.0",
+        "aws-sdk": "^2.1588.0",
         "axios": "^1.6.8",
         "body-parser": "1.20.2",
         "colors": "1.4.0",
