@@ -289,7 +289,7 @@ module.exports = {
         accessKeyId: '',
         secretAccessKey: '',
         region: '',
-        Bucket: 'nombre-de-tu-bucket', // Reemplaza esto con el nombre real de tu bucket en S3
+        bucket: 'nombre-de-tu-bucket', // Reemplaza esto con el nombre real de tu bucket en S3
     },
     chatGPT: {
         /*
