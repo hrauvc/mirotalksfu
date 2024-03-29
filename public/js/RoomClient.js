@@ -4185,8 +4185,8 @@ class RoomClient {
         const dateTime = getDataTimeStringFormat();
         const roomName = this.room_id.trim();
         const role = this.peer_info.peer_presenter  ? 'presenter' : 'participant';
-        const peerId = this.peer_id;
-        return `Rec_${role}_${roomName}_${peerId}.webm`;
+        const peerUuid = this.peer_uuid;
+        return `Rec_${role}_${roomName}_${peerUuid}.webm`;
     }
 
     handleMediaRecorderStart(evt) {

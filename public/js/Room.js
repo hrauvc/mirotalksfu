@@ -727,6 +727,15 @@ function getPeerName() {
 }
 
 function getPeerUUID() {
+    // Primero ver si no está en la URL como parámetro
+    if(window.location.search.includes('peer_uuid')) {
+        let qs = new URLSearchParams(window.location.search);
+        let peer_uuid = filterXSS(qs.get('peer_uuid'));
+        if (peer_uuid) {
+            return peer_uuid;
+        }
+    }
+
     if (lS.getItemLocalStorage('peer_uuid')) {
         return lS.getItemLocalStorage('peer_uuid');
     }
