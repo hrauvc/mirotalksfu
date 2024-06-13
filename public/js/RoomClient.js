@@ -9,7 +9,7 @@
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.3.95
+ * @version 1.4.36
  *
  */
 
@@ -142,9 +142,9 @@ const _EVENTS = {
 // Enums
 const enums = {
     recording: {
-        started: 'Started recording',
-        start: 'Start recording',
-        stop: 'Stop recording',
+        started: 'Started conference recording',
+        start: 'Start conference recording',
+        stop: 'Stop conference recording',
     },
     //...
 };
@@ -221,7 +221,7 @@ class RoomClient {
 
         this._isConnected = false;
         this.isVideoOnFullScreen = false;
-        this.isVideoFullScreenSupported = peer_info.is_mobile_device && peer_info.os_name === 'iOS' ? false : true;
+        this.isVideoFullScreenSupported = this.isFullScreenSupported();
         this.isVideoPictureInPictureSupported = document.pictureInPictureEnabled;
         this.isZoomCenterMode = false;
         this.isChatOpen = false;
@@ -396,20 +396,25 @@ class RoomClient {
 
     async joinAllowed(room) {
         console.log('07 ----> Join Room allowed');
-        this.handleRoomInfo(room);
-        const data = await this.socket.request('getRouterRtpCapabilities');
-        this.device = await this.loadDevice(data);
+        await this.handleRoomInfo(room);
+        const routerRtpCapabilities = await this.socket.request('getRouterRtpCapabilities');
+        routerRtpCapabilities.headerExtensions = routerRtpCapabilities.headerExtensions.filter(
+            (ext) => ext.uri !== 'urn:3gpp:video-orientation',
+        );
+        this.device = await this.loadDevice(routerRtpCapabilities);
         console.log('07.3 ----> Get Router Rtp Capabilities codecs: ', this.device.rtpCapabilities.codecs);
         await this.initTransports(this.device);
-        if (isBroadcastingEnabled) {
-            isPresenter ? this.startLocalMedia() : this.handleRoomBroadcasting();
-        } else {
-            this.startLocalMedia();
-        }
+        // ###################################
         this.socket.emit('getProducers');
+        // ###################################
+        if (isBroadcastingEnabled) {
+            isPresenter ? await this.startLocalMedia() : this.handleRoomBroadcasting();
+        } else {
+            await this.startLocalMedia();
+        }
     }
 
-    handleRoomInfo(room) {
+    async handleRoomInfo(room) {
         console.log('07.0 ----> Room Survey', room.survey);
         survey = room.survey;
         console.log('07.0 ----> Room Leave Redirect', room.redirect);
@@ -452,14 +457,24 @@ class RoomClient {
 
             // Handle Room moderator rules
             if (room.moderator && (!isRulesActive || !isPresenter)) {
-                console.log('07.2 ----> MODERATOR', room.moderator);
-                this._moderator.audio_start_muted = room.moderator.audio_start_muted;
-                this._moderator.video_start_hidden = room.moderator.video_start_hidden;
-                this._moderator.audio_cant_unmute = room.moderator.audio_cant_unmute;
-                this._moderator.video_cant_unhide = room.moderator.video_cant_unhide;
-                this._moderator.screen_cant_share = room.moderator.screen_cant_share;
-                this._moderator.chat_cant_privately = room.moderator.chat_cant_privately;
-                this._moderator.chat_cant_chatgpt = room.moderator.chat_cant_chatgpt;
+                console.log('07.2 ----> ROOM MODERATOR', room.moderator);
+                const {
+                    audio_start_muted,
+                    video_start_hidden,
+                    audio_cant_unmute,
+                    video_cant_unhide,
+                    screen_cant_share,
+                    chat_cant_privately,
+                    chat_cant_chatgpt,
+                } = room.moderator;
+
+                this._moderator.audio_start_muted = audio_start_muted;
+                this._moderator.video_start_hidden = video_start_hidden;
+                this._moderator.audio_cant_unmute = audio_cant_unmute;
+                this._moderator.video_cant_unhide = video_cant_unhide;
+                this._moderator.screen_cant_share = screen_cant_share;
+                this._moderator.chat_cant_privately = chat_cant_privately;
+                this._moderator.chat_cant_chatgpt = chat_cant_chatgpt;
                 //
                 if (this._moderator.audio_start_muted && this._moderator.video_start_hidden) {
                     this.userLog('warning', 'The Moderator disabled your audio and video', 'top-end');
@@ -577,11 +592,9 @@ class RoomClient {
                     appData,
                     rtpParameters,
                 });
-                if (producer_id.error) {
-                    errback(producer_id.error);
-                } else {
-                    callback({ id: producer_id });
-                }
+                callback({
+                    id: producer_id,
+                });
             } catch (err) {
                 errback(err);
             }
@@ -594,6 +607,20 @@ class RoomClient {
                     break;
                 case 'connected':
                     console.log('Producer Transport connected', { id: this.producerTransport.id });
+                    break;
+                case 'disconnected':
+                    console.log('Producer Transport disconnected', { id: this.producerTransport.id });
+                    /*
+                    this.restartIce();
+
+                    popupHtmlMessage(
+                        null,
+                        image.network,
+                        'Producer Transport disconnected',
+                        'Check Your Network Connectivity (Restarted ICE)',
+                        'center',
+                    );
+                    */
                     break;
                 case 'failed':
                     console.warn('Producer Transport failed', { id: this.producerTransport.id });
@@ -609,12 +636,19 @@ class RoomClient {
                     );
                     break;
                 default:
+                    console.log('Producer transport connection state changes', {
+                        state: state,
+                        id: this.producerTransport.id,
+                    });
                     break;
             }
         });
 
         this.producerTransport.on('icegatheringstatechange', (state) => {
-            console.log('Producer icegatheringstatechange', state);
+            console.log('Producer icegatheringstatechange', {
+                state: state,
+                id: this.producerTransport.id,
+            });
         });
 
         // ####################################################
@@ -657,6 +691,19 @@ class RoomClient {
                 case 'connected':
                     console.log('Consumer Transport connected', { id: this.consumerTransport.id });
                     break;
+                case 'disconnected':
+                    console.log('Consumer Transport disconnected', { id: this.consumerTransport.id });
+                /*
+                    this.restartIce();
+
+                    popupHtmlMessage(
+                        null,
+                        image.network,
+                        'Consumer Transport disconnected',
+                        'Check Your Network Connectivity (Restarted ICE)',
+                        'center',
+                    );
+                    */
                 case 'failed':
                     console.warn('Consumer Transport failed', { id: this.consumerTransport.id });
 
@@ -671,12 +718,19 @@ class RoomClient {
                     );
                     break;
                 default:
+                    console.log('Consumer transport connection state changes', {
+                        state: state,
+                        id: this.consumerTransport.id,
+                    });
                     break;
             }
         });
 
         this.consumerTransport.on('icegatheringstatechange', (state) => {
-            console.log('Consumer icegatheringstatechange', state);
+            console.log('Consumer icegatheringstatechange', {
+                state: state,
+                id: this.consumerTransport.id,
+            });
         });
 
         // ####################################################
@@ -684,6 +738,38 @@ class RoomClient {
         // ####################################################
 
         //
+    }
+
+    // ####################################################
+    // RESTART ICE
+    // ####################################################
+
+    async restartIce() {
+        console.log('Restart ICE...');
+        try {
+            if (this.producerTransport) {
+                const iceParameters = await this.socket.request('restartIce', {
+                    transport_id: this.producerTransport.id,
+                });
+
+                console.log('Restarting producer transport ICE', iceParameters);
+
+                await this.producerTransport.restartIce({ iceParameters });
+            }
+
+            if (this.consumerTransport) {
+                const iceParameters = await this.socket.request('restartIce', {
+                    transport_id: this.consumerTransport.id,
+                });
+
+                console.log('Restarting consumer transport ICE', iceParameters);
+
+                await this.consumerTransport.restartIce({ iceParameters });
+            }
+            console.log('Restart ICE done');
+        } catch (error) {
+            console.error('Restart ICE error', error);
+        }
     }
 
     // ####################################################
@@ -710,6 +796,7 @@ class RoomClient {
         this.socket.on('wbCanvasToJson', this.handleWbCanvasToJson);
         this.socket.on('whiteboardAction', this.handleWhiteboardAction);
         this.socket.on('audioVolume', this.handleAudioVolumeData);
+        this.socket.on('dominantSpeaker', this.handleDominantSpeakerData);
         this.socket.on('updateRoomModerator', this.handleUpdateRoomModeratorData);
         this.socket.on('updateRoomModeratorALL', this.handleUpdateRoomModeratorALLData);
         this.socket.on('recordingAction', this.handleRecordingActionData);
@@ -834,6 +921,10 @@ class RoomClient {
         this.handleAudioVolume(data);
     };
 
+    handleDominantSpeakerData = (data) => {
+        this.handleDominantSpeaker(data);
+    };
+
     handleUpdateRoomModeratorData = (data) => {
         console.log('SocketOn Update room moderator', data);
         this.handleUpdateRoomModerator(data);
@@ -888,22 +979,24 @@ class RoomClient {
     }
 
     refreshBrowser() {
+        this.exit(true);
         getPeerName() ? location.reload() : openURL(this.getReconnectDirectJoinURL());
     }
 
     getReconnectDirectJoinURL() {
+        const { peer_audio, peer_video, peer_screen, peer_token } = this.peer_info;
         const baseUrl = `${window.location.origin}/join`;
         const queryParams = {
             room: this.room_id,
             roomPassword: this.RoomPassword,
             name: this.peer_name,
-            audio: this.peer_info.peer_audio,
-            video: this.peer_info.peer_video,
-            screen: this.peer_info.peer_screen,
+            audio: peer_audio,
+            video: peer_video,
+            screen: peer_screen,
             notify: 0,
             isPresenter: isPresenter,
         };
-        if (this.peer_info.peer_token) queryParams.token = this.peer_info.peer_token;
+        if (peer_token) queryParams.token = peer_token;
         const url = `${baseUrl}?${Object.entries(queryParams)
             .map(([key, value]) => `${key}=${value}`)
             .join('&')}`;
@@ -970,14 +1063,15 @@ class RoomClient {
             position: 'center',
             imageUrl: image.broadcasting,
             title: 'Room broadcasting Enabled',
-            text: 'Would you like to deactivate room broadcasting?',
+            text: 'Would you like to continue the room broadcast?',
             showDenyButton: true,
+            confirmButtonColor: '#18392B',
             confirmButtonText: `Yes`,
             denyButtonText: `No`,
             showClass: { popup: 'animate__animated animate__fadeInDown' },
             hideClass: { popup: 'animate__animated animate__fadeOutUp' },
         }).then((result) => {
-            if (result.isConfirmed) {
+            if (result.isDenied) {
                 switchBroadcasting.click();
             }
         });
@@ -987,36 +1081,54 @@ class RoomClient {
     // START LOCAL AUDIO VIDEO MEDIA
     // ####################################################
 
-    startLocalMedia() {
-        console.log('08 ----> Start local media');
-        if (this.isAudioAllowed && !this._moderator.audio_start_muted) {
-            console.log('09 ----> Start audio media');
-            this.produce(mediaType.audio, microphoneSelect.value);
+    async startLocalMedia() {
+        console.log('08 ----> START LOCAL MEDIA...');
+        const audioProducerExist = this.producerExist(mediaType.audio);
+        if (this.isAudioAllowed) {
+            if (!audioProducerExist) {
+                await this.produce(mediaType.audio, microphoneSelect.value);
+                console.log('09 ----> START AUDIO MEDIA');
+            }
+            if (this._moderator.audio_start_muted) {
+                await this.pauseAudioProducer();
+            }
         } else {
-            console.log('09 ----> Audio is off');
-            setColor(startAudioButton, 'red');
-            this.setIsAudio(this.peer_id, false);
-            if (BUTTONS.main.startAudioButton) this.event(_EVENTS.stopAudio);
-            this.updatePeerInfo(this.peer_name, this.peer_id, 'audio', false);
+            if (isEnumerateAudioDevices && !audioProducerExist) {
+                await this.produce(mediaType.audio, microphoneSelect.value);
+                console.log('09 ----> START AUDIO MEDIA');
+                await this.pauseAudioProducer();
+            }
         }
+
         if (this.isVideoAllowed && !this._moderator.video_start_hidden) {
-            console.log('10 ----> Start video media');
-            this.produce(mediaType.video, videoSelect.value);
+            await this.produce(mediaType.video, videoSelect.value);
+            console.log('10 ----> START VIDEO MEDIA');
         } else {
-            console.log('10 ----> Video is off');
             setColor(startVideoButton, 'red');
             this.setVideoOff(this.peer_info, false);
             this.sendVideoOff();
             if (BUTTONS.main.startVideoButton) this.event(_EVENTS.stopVideo);
             this.updatePeerInfo(this.peer_name, this.peer_id, 'video', false);
+            console.log('10 ----> VIDEO IS OFF');
         }
+
         if (this.joinRoomWithScreen && !this._moderator.screen_cant_share) {
-            console.log('08 ----> Start Screen media');
-            this.produce(mediaType.screen, null, false, true);
+            await this.produce(mediaType.screen, null, false, true);
+            console.log('11 ----> START SCREEN MEDIA');
         }
         // if (this.isScreenAllowed) {
         //     this.shareScreen();
         // }
+        console.log('[startLocalMedia] - PRODUCER LABEL', this.producerLabel);
+    }
+
+    async pauseAudioProducer() {
+        setColor(startAudioButton, 'red');
+        this.setIsAudio(this.peer_id, false);
+        if (BUTTONS.main.startAudioButton) this.event(_EVENTS.stopAudio);
+        await this.pauseProducer(mediaType.audio);
+        console.log('09 ----> PAUSE AUDIO MEDIA');
+        this.updatePeerInfo(this.peer_name, this.peer_id, 'audio', false);
     }
 
     // ####################################################
@@ -1035,11 +1147,9 @@ class RoomClient {
                 break;
             case mediaType.video:
                 this.isVideoAllowed = true;
-                if (swapCamera) {
-                    mediaConstraints = this.getCameraConstraints();
-                } else {
-                    mediaConstraints = this.getVideoConstraints(deviceId);
-                }
+                swapCamera
+                    ? (mediaConstraints = this.getCameraConstraints())
+                    : (mediaConstraints = this.getVideoConstraints(deviceId));
                 break;
             case mediaType.screen:
                 mediaConstraints = this.getScreenConstraints();
@@ -1052,7 +1162,7 @@ class RoomClient {
             return console.error('Cannot produce video');
         }
         if (this.producerLabel.has(type)) {
-            return console.log('Producer already exists for this type ' + type);
+            return console.warn('Producer already exists for this type ' + type);
         }
 
         const videoPrivacyBtn = this.getId(this.peer_id + '__vp');
@@ -1119,7 +1229,10 @@ class RoomClient {
                 };
             }
 
-            console.log('PRODUCER PARAMS', params);
+            console.log('PRODUCER TYPE AND PARAMS', {
+                type: type,
+                params: params,
+            });
 
             const producer = await this.producerTransport.produce(params);
 
@@ -1127,9 +1240,8 @@ class RoomClient {
                 throw new Error('Producer not found!');
             }
 
-            console.log('PRODUCER', producer);
-
             this.producers.set(producer.id, producer);
+            this.producerLabel.set(type, producer.id);
 
             // if screen sharing produce the tab audio + microphone
             if (screen && stream.getAudioTracks()[0]) {
@@ -1179,7 +1291,7 @@ class RoomClient {
                     au.parentNode.removeChild(au);
                     console.log('[transportClose] audio-element-count', this.localAudioEl.childElementCount);
                 }
-                this.producers.delete(producer.id);
+                this.closeProducer(type);
             });
 
             producer.on('close', () => {
@@ -1201,10 +1313,8 @@ class RoomClient {
                     au.parentNode.removeChild(au);
                     console.log('[closingProducer] audio-element-count', this.localAudioEl.childElementCount);
                 }
-                this.producers.delete(producer.id);
+                this.closeProducer(type);
             });
-
-            this.producerLabel.set(type, producer.id);
 
             switch (type) {
                 case mediaType.audio:
@@ -1222,7 +1332,9 @@ class RoomClient {
                 default:
                     break;
             }
+
             this.sound('joined');
+            return producer;
         } catch (err) {
             console.error('Produce error:', err);
 
@@ -1600,8 +1712,8 @@ class RoomClient {
 
     closeThenProduce(type, deviceId = null, swapCamera = false) {
         this.closeProducer(type);
-        setTimeout(function () {
-            rc.produce(type, deviceId, swapCamera);
+        setTimeout(async function () {
+            await rc.produce(type, deviceId, swapCamera);
         }, 1000);
     }
 
@@ -1719,7 +1831,7 @@ class RoomClient {
 
     async pauseProducer(type) {
         if (!this.producerLabel.has(type)) {
-            return console.log('There is no producer for this type ' + type);
+            return console.warn('There is no producer for this type ' + type);
         }
 
         const producer_id = this.producerLabel.get(type);
@@ -1735,6 +1847,7 @@ class RoomClient {
         switch (type) {
             case mediaType.audio:
                 this.event(_EVENTS.pauseAudio);
+                this.setIsAudio(this.peer_id, false);
                 break;
             case mediaType.video:
                 this.event(_EVENTS.pauseVideo);
@@ -1749,7 +1862,7 @@ class RoomClient {
 
     async resumeProducer(type) {
         if (!this.producerLabel.has(type)) {
-            return console.log('There is no producer for this type ' + type);
+            return console.warn('There is no producer for this type ' + type);
         }
 
         const producer_id = this.producerLabel.get(type);
@@ -1765,6 +1878,7 @@ class RoomClient {
         switch (type) {
             case mediaType.audio:
                 this.event(_EVENTS.resumeAudio);
+                this.setIsAudio(this.peer_id, true);
                 break;
             case mediaType.video:
                 this.event(_EVENTS.resumeVideo);
@@ -1779,7 +1893,7 @@ class RoomClient {
 
     closeProducer(type) {
         if (!this.producerLabel.has(type)) {
-            return console.log('There is no producer for this type ' + type);
+            return console.warn('There is no producer for this type ' + type);
         }
 
         const producer_id = this.producerLabel.get(type);
@@ -1790,13 +1904,15 @@ class RoomClient {
             type: type,
             status: false,
         };
-        console.log('Close producer', data);
+        console.log(`Close producer ${type}`, data);
 
         this.socket.emit('producerClosed', data);
 
         this.producers.get(producer_id).close();
         this.producers.delete(producer_id);
         this.producerLabel.delete(type);
+
+        console.log('[closeProducer] - PRODUCER LABEL', this.producerLabel);
 
         if (type !== mediaType.audio) {
             const elem = this.getId(producer_id);
@@ -1852,7 +1968,7 @@ class RoomClient {
     async produceScreenAudio(stream) {
         try {
             if (this.producerLabel.has(mediaType.audioTab)) {
-                return console.log('Producer already exists for this type ' + mediaType.audioTab);
+                return console.warn('Producer already exists for this type ' + mediaType.audioTab);
             }
 
             const track = stream.getAudioTracks()[0];
@@ -1868,6 +1984,9 @@ class RoomClient {
             console.log('PRODUCER SCREEN AUDIO', producerSa);
 
             this.producers.set(producerSa.id, producerSa);
+            this.producerLabel.set(mediaType.audioTab, producerSa.id);
+
+            console.log('[produceScreenAudio] - PRODUCER LABEL', this.producerLabel);
 
             const sa = await this.handleProducer(producerSa.id, mediaType.audio, stream);
 
@@ -1883,7 +2002,7 @@ class RoomClient {
                 });
                 sa.parentNode.removeChild(sa);
                 console.log('[transportClose] audio-element-count', this.localAudioEl.childElementCount);
-                this.producers.delete(producerSa.id);
+                this.closeProducer(mediaType.audioTab);
             });
 
             producerSa.on('close', () => {
@@ -1893,10 +2012,8 @@ class RoomClient {
                 });
                 sa.parentNode.removeChild(sa);
                 console.log('[closingProducer] audio-element-count', this.localAudioEl.childElementCount);
-                this.producers.delete(producerSa.id);
+                this.closeProducer(mediaType.audioTab);
             });
-
-            this.producerLabel.set(mediaType.audioTab, producerSa.id);
         } catch (err) {
             console.error('Produce error:', err);
         }
@@ -1939,6 +2056,7 @@ class RoomClient {
 
     async getConsumeStream(producerId, peer_id, type) {
         const { rtpCapabilities } = this.device;
+
         const data = await this.socket.request('consume', {
             rtpCapabilities,
             consumerTransportId: this.consumerTransport.id,
@@ -2216,10 +2334,7 @@ class RoomClient {
         //console.log('setVideoOff', peer_info);
         let d, vb, i, h, au, sf, sm, sv, gl, ban, ko, p, pm, pb, pv;
 
-        const peer_id = peer_info.peer_id;
-        const peer_name = peer_info.peer_name;
-        const peer_audio = peer_info.peer_audio;
-        const peer_presenter = peer_info.peer_presenter;
+        const { peer_id, peer_name, peer_audio, peer_presenter } = peer_info;
 
         this.removeVideoOff(peer_id);
         d = document.createElement('div');
@@ -2497,11 +2612,15 @@ class RoomClient {
             if (element._tippy) {
                 element._tippy.destroy();
             }
-            tippy(element, {
-                content: content,
-                placement: placement,
-                allowHTML: allowHTML,
-            });
+            try {
+                tippy(element, {
+                    content: content,
+                    placement: placement,
+                    allowHTML: allowHTML,
+                });
+            } catch (err) {
+                console.error('setTippy error', err.message);
+            }
         } else {
             console.warn('setTippy element not found with content', content);
         }
@@ -2793,10 +2912,11 @@ class RoomClient {
                 switch (data.action) {
                     case enums.recording.started:
                     case enums.recording.start:
-                        recordingStartMessage();
+                        html = html + '<br/> Your presence implies you agree to being recorded';
+                        toastMessage(6000);
                         break;
                     case enums.recording.stop:
-                        defaultMessage();
+                        toastMessage(3000);
                         break;
                     //...
                     default:
@@ -2809,26 +2929,22 @@ class RoomClient {
                 defaultMessage();
                 break;
         }
-        // RECORDING
-        function recordingStartMessage() {
-            Swal.fire({
-                allowOutsideClick: false,
-                allowEscapeKey: false,
+        // TOAST less invasive
+        function toastMessage(duration = 3000) {
+            const Toast = Swal.mixin({
                 background: swalBackground,
-                position: position,
+                position: 'top-end',
                 icon: icon,
-                imageUrl: imageUrl,
+                showConfirmButton: false,
+                timerProgressBar: true,
+                toast: true,
+                timer: duration,
+            });
+            Toast.fire({
                 title: title,
-                html: html + '<br/> Do you want to leave the room?',
-                showDenyButton: true,
-                confirmButtonText: `Yes`,
-                denyButtonText: `No`,
+                html: html,
                 showClass: { popup: 'animate__animated animate__fadeInDown' },
                 hideClass: { popup: 'animate__animated animate__fadeOutUp' },
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    exitButton.onclick();
-                }
             });
         }
         // DEFAULT
@@ -2935,6 +3051,15 @@ class RoomClient {
     // ####################################################
     // FULL SCREEN
     // ####################################################
+
+    isFullScreenSupported() {
+        return (
+            document.fullscreenEnabled ||
+            document.webkitFullscreenEnabled ||
+            document.mozFullScreenEnabled ||
+            document.msFullscreenEnabled
+        );
+    }
 
     toggleFullScreen(elem = null) {
         let el = elem ? elem : document.documentElement;
@@ -4381,12 +4506,15 @@ class RoomClient {
 
     handleRecordingAction(data) {
         console.log('Handle recording action', data);
+
+        const { peer_name, peer_id, action } = data;
+
         const recAction = {
             side: 'left',
             img: this.leftMsgAvatar,
-            peer_name: data.peer_name,
-            peer_id: data.peer_id,
-            peer_msg: `🔴 ${data.action}`,
+            peer_name: peer_name,
+            peer_id: peer_id,
+            peer_msg: `🔴 ${action}`,
             to_peer_id: 'all',
             to_peer_name: 'all',
         };
@@ -4394,15 +4522,19 @@ class RoomClient {
 
         const recData = {
             type: 'recording',
-            action: data.action,
-            peer_name: data.peer_name,
+            action: action,
+            peer_name: peer_name,
         };
+
         this.msgHTML(
             recData,
             null,
             image.recording,
             null,
-            `${icons.user} ${data.peer_name} <br /> <h1>${data.action}</h1>`,
+            `${icons.user} ${peer_name} 
+            <br /><br /> 
+            <span>🔴 ${action}</span>
+            <br />`,
         );
     }
 
@@ -5542,6 +5674,23 @@ class RoomClient {
     }
 
     // ####################################################
+    // HANDLE DOMINANT SPEAKER
+    // ###################################################
+
+    handleDominantSpeaker(data) {
+        console.log('Dominant Speaker', data);
+        const { peer_id } = data;
+        const peerNameElement = this.getId(peer_id + '__name');
+        if (peerNameElement) {
+            peerNameElement.style.color = 'lime';
+            setTimeout(function () {
+                peerNameElement.style.color = '#FFFFFF';
+            }, 5000);
+        }
+        //...
+    }
+
+    // ####################################################
     // HANDLE BAN
     // ###################################################
 
@@ -5828,14 +5977,16 @@ class RoomClient {
                     break;
                 case 'mute':
                     if (peerActionAllowed) {
-                        this.closeProducer(mediaType.audio);
-                        this.updatePeerInfo(this.peer_name, this.peer_id, 'audio', false);
-                        this.userLog(
-                            'warning',
-                            from_peer_name + '  ' + _PEER.audioOff + ' has closed yours audio',
-                            'top-end',
-                            10000,
-                        );
+                        if (this.producerExist(mediaType.audio)) {
+                            await this.pauseProducer(mediaType.audio);
+                            this.updatePeerInfo(this.peer_name, this.peer_id, 'audio', false);
+                            this.userLog(
+                                'warning',
+                                from_peer_name + '  ' + _PEER.audioOff + ' has closed yours audio',
+                                'top-end',
+                                10000,
+                            );
+                        }
                     }
                     break;
                 case 'unmute':
@@ -5912,18 +6063,20 @@ class RoomClient {
             denyButtonText: `No`,
             showClass: { popup: 'animate__animated animate__fadeInDown' },
             hideClass: { popup: 'animate__animated animate__fadeOutUp' },
-        }).then((result) => {
+        }).then(async (result) => {
             if (result.isConfirmed) {
                 switch (type) {
                     case mediaType.audio:
-                        this.produce(mediaType.audio, microphoneSelect.value);
+                        this.producerExist(mediaType.audio)
+                            ? await this.resumeProducer(mediaType.audio)
+                            : await this.produce(mediaType.audio, microphoneSelect.value);
                         this.updatePeerInfo(this.peer_name, this.peer_id, 'audio', true);
                         break;
                     case mediaType.video:
-                        this.produce(mediaType.video, videoSelect.value);
+                        await this.produce(mediaType.video, videoSelect.value);
                         break;
                     case mediaType.screen:
-                        this.produce(mediaType.screen);
+                        await this.produce(mediaType.screen);
                         break;
                     default:
                         break;
@@ -6107,9 +6260,11 @@ class RoomClient {
                                     case 'hide':
                                         let peerVideoButton = this.getId(data.peer_id + '___pVideo');
                                         if (peerVideoButton) peerVideoButton.innerHTML = _PEER.videoOff;
+                                        break;
                                     case 'stop':
                                         let peerScreenButton = this.getId(data.peer_id + '___pScreen');
                                         if (peerScreenButton) peerScreenButton.innerHTML = _PEER.screenOff;
+                                        break;
                                     default:
                                         break;
                                 }
@@ -6337,6 +6492,7 @@ class RoomClient {
                 this._moderator.video_cant_unhide = data.status;
                 this._moderator.video_cant_unhide ? hide(tabVideoDevicesBtn) : show(tabVideoDevicesBtn);
                 rc.roomMessage('video_cant_unhide', data.status);
+                break;
             case 'screen_cant_share':
                 this._moderator.screen_cant_share = data.status;
                 rc.roomMessage('screen_cant_share', data.status);
@@ -6566,6 +6722,8 @@ class RoomClient {
                         case error.UNKNOWN_ERROR:
                             geoError = 'An unknown error occurred';
                             break;
+                        default:
+                            break;
                     }
                     rc.sendPeerGeoLocation(peer_id, 'geoLocationKO', `${rc.peer_name}: ${geoError}`);
                     rc.userLog('warning', geoError, 'top-end', 5000);
@@ -6611,5 +6769,9 @@ class RoomClient {
                 );
             }
         });
+    }
+
+    sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 } // End

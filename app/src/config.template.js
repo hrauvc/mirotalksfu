@@ -19,7 +19,17 @@ function getIPv4() {
 
 const IPv4 = getIPv4();
 
+const numWorkers = require('os').cpus().length;
+
 module.exports = {
+    console: {
+        /*
+            timeZone: Time Zone corresponding to timezone identifiers from the IANA Time Zone Database es 'Europe/Rome' default UTC
+        */
+        timeZone: 'UTC',
+        debug: true,
+        colors: true,
+    },
     server: {
         listen: {
             // app listen on
@@ -49,29 +59,16 @@ module.exports = {
             enabled: false,
         },
     },
-    host: {
+    middleware: {
         /*
-            Host Protection (default: false)
-            To enhance host security, enable host protection - user auth and provide valid
-            usernames and passwords in the users array or active users_from_db using users_api_endpoint for check.
+            Middleware:
+                - IP Whitelist: Access to the instance is restricted to only the specified IP addresses in the allowed list. This feature is disabled by default.
+                - ...
         */
-        protected: false,
-        user_auth: false,
-        users_from_db: false, // if true ensure that api.token is also set to true.
-        //users_api_endpoint: 'http://localhost:9000/api/v1/user/isAuth',
-        users_api_endpoint: 'https://webrtc.mirotalk.com/api/v1/user/isAuth',
-        users_api_secret_key: 'mirotalkweb_default_secret',
-        users: [
-            {
-                username: 'username',
-                password: 'password',
-            },
-            {
-                username: 'username2',
-                password: 'password2',
-            },
-            //...
-        ],
+        IpWhitelist: {
+            enabled: false,
+            allowed: ['127.0.0.1', '::1'],
+        },
     },
     api: {
         // Default secret key for app/api
@@ -96,6 +93,61 @@ module.exports = {
         key: 'mirotalksfu_jwt_secret',
         exp: '1h',
     },
+    oidc: {
+        /*
+            OIDC stands for OpenID Connect, which is an authentication protocol built on top of OAuth 2.0. 
+            It provides a simple identity layer on the OAuth 2.0 protocol, allowing clients to verify the identity of the end-user 
+            based on the authentication performed by an authorization server.
+            How to configure your own Provider:
+                1. Sign up for an account at https://auth0.com.
+                2. Navigate to https://manage.auth0.com/ to create a new application tailored to your specific requirements.
+            For those seeking an open-source solution, check out: https://github.com/panva/node-oidc-provider
+        */
+        enabled: false,
+        config: {
+            issuerBaseURL: 'https://server.example.com',
+            baseURL: `http://localhost:${process.env.PORT ? process.env.PORT : 3010}`, // https://sfu.mirotalk.com
+            clientID: 'clientID',
+            clientSecret: 'clientSecret',
+            secret: 'mirotalksfu-oidc-secret',
+            authorizationParams: {
+                response_type: 'code',
+                scope: 'openid profile email',
+            },
+            authRequired: false, // Set to true if authentication is required for all routes
+            auth0Logout: true, // Set to true to enable logout with Auth0
+            routes: {
+                callback: '/auth/callback', // Indicating the endpoint where your application will handle the callback from the authentication provider after a user has been authenticated.
+                login: false, // Dedicated route in your application for user login.
+                logout: '/logout', // Indicating the endpoint where your application will handle user logout requests.
+            },
+        },
+    },
+    host: {
+        /*
+            Host Protection (default: false)
+            To enhance host security, enable host protection - user auth and provide valid
+            usernames and passwords in the users array or active users_from_db using users_api_endpoint for check.
+            When oidc.enabled is utilized alongside host protection, the authenticated user will be recognized as valid.
+        */
+        protected: false,
+        user_auth: false,
+        users_from_db: false, // if true ensure that api.token is also set to true.
+        //users_api_endpoint: 'http://localhost:9000/api/v1/user/isAuth',
+        users_api_endpoint: 'https://webrtc.mirotalk.com/api/v1/user/isAuth',
+        users_api_secret_key: 'mirotalkweb_default_secret',
+        users: [
+            {
+                username: 'username',
+                password: 'password',
+            },
+            {
+                username: 'username2',
+                password: 'password2',
+            },
+            //...
+        ],
+    },
     presenters: {
         list: [
             /*
@@ -106,6 +158,93 @@ module.exports = {
             'miroslav.pejic.85@gmail.com',
         ],
         join_first: true, // Set to true for traditional behavior, false to prioritize presenters
+    },
+    chatGPT: {
+        /*
+        ChatGPT
+            1. Goto https://platform.openai.com/
+            2. Create your account
+            3. Generate your APIKey https://platform.openai.com/account/api-keys
+        */
+        enabled: false,
+        basePath: 'https://api.openai.com/v1/',
+        apiKey: '',
+        model: 'gpt-3.5-turbo',
+        max_tokens: 1000,
+        temperature: 0,
+    },
+    email: {
+        /*
+            Configure email settings for notifications or alerts
+            Refer to the documentation for Gmail configuration: https://support.google.com/mail/answer/185833?hl=en
+        */
+        alert: false,
+        host: 'smtp.gmail.com',
+        port: 587,
+        username: 'your_username',
+        password: 'your_password',
+        sendTo: 'sfu.mirotalk@gmail.com',
+    },
+    ngrok: {
+        /* 
+        Ngrok
+            1. Goto https://ngrok.com
+            2. Get started for free 
+            3. Copy YourNgrokAuthToken: https://dashboard.ngrok.com/get-started/your-authtoken
+        */
+        enabled: false,
+        authToken: '',
+    },
+    sentry: {
+        /*
+        Sentry
+            1. Goto https://sentry.io/
+            2. Create account
+            3. On dashboard goto Settings/Projects/YourProjectName/Client Keys (DSN)
+        */
+        enabled: false,
+        DSN: '',
+        tracesSampleRate: 0.5,
+    },
+    slack: {
+        /*
+        Slack
+            1. Goto https://api.slack.com/apps/
+            2. Create your app
+            3. On Settings - Basic Information - App Credentials, chose your Signing Secret
+            4. Create a Slash Commands and put as Request URL: https://your.domain.name/slack
+        */
+        enabled: false,
+        signingSecret: '',
+    },
+    IPLookup: {
+        /*
+        GeoJS
+            https://www.geojs.io/docs/v1/endpoints/geo/
+        */
+        enabled: false,
+        getEndpoint(ip) {
+            return `https://get.geojs.io/v1/ip/geo/${ip}.json`;
+        },
+    },
+    survey: {
+        /*
+        QuestionPro
+            1. GoTo https://www.questionpro.com/
+            2. Create your account
+            3. Create your custom survey
+        */
+        enabled: false,
+        url: '',
+    },
+    redirect: {
+        /*
+        Redirect URL on leave room
+            Upon leaving the room, users who either opt out of providing feedback or if the survey is disabled 
+            will be redirected to a specified URL. If enabled false the default '/newroom' URL will be used.
+        */
+        enabled: false,
+        url: '',
     },
     ui: {
         /*
@@ -135,6 +274,7 @@ module.exports = {
                 title: 'Click the link to make a call.',
                 description: 'MiroTalk SFU calling provides real-time video calls, messaging and screen sharing.',
                 image: 'https://sfu.mirotalk.com/images/mirotalksfu.png',
+                url: 'https://sfu.mirotalk.com',
             },
             html: {
                 features: true,
@@ -349,15 +489,15 @@ module.exports = {
     },
     mediasoup: {
         // Worker settings
-        numWorkers: require('os').cpus().length,
+        numWorkers: numWorkers,
         worker: {
-            rtcMinPort: 40000,
-            rtcMaxPort: 40100,
             logLevel: 'error',
             logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp', 'rtx', 'bwe', 'score', 'simulcast', 'svc', 'sctp'],
         },
         // Router settings
         router: {
+            audioLevelObserverEnabled: true,
+            activeSpeakerObserverEnabled: false,
             mediaCodecs: [
                 {
                     kind: 'audio',
@@ -410,15 +550,39 @@ module.exports = {
         webRtcServerActive: false,
         webRtcServerOptions: {
             listenInfos: [
-                { protocol: 'udp', ip: '0.0.0.0', announcedAddress: IPv4, port: 44444 },
-                { protocol: 'tcp', ip: '0.0.0.0', announcedAddress: IPv4, port: 44444 },
+                // { protocol: 'udp', ip: '0.0.0.0', announcedAddress: IPv4, port: 40000 },
+                // { protocol: 'tcp', ip: '0.0.0.0', announcedAddress: IPv4, port: 40000 },
+                {
+                    protocol: 'udp',
+                    ip: '0.0.0.0',
+                    announcedAddress: IPv4,
+                    portRange: { min: 40000, max: 40000 + numWorkers },
+                },
+                {
+                    protocol: 'tcp',
+                    ip: '0.0.0.0',
+                    announcedAddress: IPv4,
+                    portRange: { min: 40000, max: 40000 + numWorkers },
+                },
             ],
         },
         // WebRtcTransportOptions
         webRtcTransport: {
             listenInfos: [
-                { protocol: 'udp', ip: '0.0.0.0', announcedAddress: IPv4 },
-                { protocol: 'tcp', ip: '0.0.0.0', announcedAddress: IPv4 },
+                // { protocol: 'udp', ip: IPv4, portRange: { min: 40000, max: 40100 } },
+                // { protocol: 'tcp', ip: IPv4, portRange: { min: 40000, max: 40100 } },
+                {
+                    protocol: 'udp',
+                    ip: '0.0.0.0',
+                    announcedAddress: IPv4,
+                    portRange: { min: 40000, max: 40100 },
+                },
+                {
+                    protocol: 'tcp',
+                    ip: '0.0.0.0',
+                    announcedAddress: IPv4,
+                    portRange: { min: 40000, max: 40100 },
+                },
             ],
             initialAvailableOutgoingBitrate: 1000000,
             minimumAvailableOutgoingBitrate: 600000,

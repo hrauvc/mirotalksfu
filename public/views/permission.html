@@ -35,11 +35,12 @@
             content="MiroTalk SFU calling provides real-time video calls, messaging and screen sharing."
         />
         <meta id="ogImage" property="og:image" content="https://sfu.mirotalk.com/images/mirotalksfu.png" />
+        <meta id="ogUrl" property="og:url" content="https://sfu.mirotalk.com" />
 
         <!-- StyleSheet -->
 
         <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:400,600" />
-        <link rel="stylesheet" href="../css/landing.css" />
+        <link rel="stylesheet" type="text/css" href="../css/landing.css" />
 
         <!-- Js scripts -->
 
@@ -90,16 +91,6 @@
                                     This app will not work without camera or microphone access. Please try again and
                                     allow it.
                                 </p>
-                                <script>
-                                    let qs = new URLSearchParams(window.location.search);
-                                    let room_id = filterXSS(qs.get('room_id'));
-                                    let message = filterXSS(qs.get('message'));
-                                    console.log('Allow Camera or Audio', {
-                                        room_id: room_id,
-                                        message: message,
-                                    });
-                                    document.getElementById('message').innerHTML = message;
-                                </script>
                                 <div class="hero-cta">
                                     <a
                                         class="button button-primary pulse"
@@ -223,7 +214,7 @@
             </footer>
         </div>
 
-        <script defer src="../js/landing.js"></script>
+        <script defer src="../js/Landing.js"></script>
         <script async defer src="https://buttons.github.io/buttons.js"></script>
     </body>
 </html>

@@ -11,7 +11,7 @@ if (location.href.substr(0, 5) !== 'https') location.href = 'https' + location.h
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.1
+ * @version 1.4.36
  *
  */
 
@@ -248,6 +248,10 @@ let transcription;
 // INIT ROOM
 // ####################################################
 
+document.addEventListener('DOMContentLoaded', function () {
+    initClient();
+});
+
 function initClient() {
     setTheme();
 
@@ -344,6 +348,7 @@ function initClient() {
     }
     setupWhiteboard();
     initEnumerateDevices();
+    setupInitButtons();
 }
 
 // ####################################################
@@ -386,11 +391,15 @@ function setTippy(elem, content, placement, allowHTML = false) {
         if (element._tippy) {
             element._tippy.destroy();
         }
-        tippy(element, {
-            content: content,
-            placement: placement,
-            allowHTML: allowHTML,
-        });
+        try {
+            tippy(element, {
+                content: content,
+                placement: placement,
+                allowHTML: allowHTML,
+            });
+        } catch (err) {
+            console.error('setTippy error', err.message);
+        }
     } else {
         console.warn('setTippy element not found with content', content);
     }
@@ -595,6 +604,31 @@ async function addChild(device, els) {
         }
         el.appendChild(option);
     });
+}
+
+// ####################################################
+// INIT AUDIO/VIDEO/SCREEN BUTTONS
+// ####################################################
+
+function setupInitButtons() {
+    initVideoAudioRefreshButton.onclick = () => {
+        refreshMyAudioVideoDevices();
+    };
+    initVideoButton.onclick = () => {
+        handleVideo();
+    };
+    initAudioButton.onclick = () => {
+        handleAudio();
+    };
+    initAudioVideoButton.onclick = async () => {
+        await handleAudioVideo(e);
+    };
+    initStartScreenButton.onclick = async () => {
+        await toggleScreenSharing();
+    };
+    initStopScreenButton.onclick = async () => {
+        await toggleScreenSharing();
+    };
 }
 
 // ####################################################
@@ -1254,11 +1288,6 @@ function roomIsReady() {
     BUTTONS.settings.broadcastingButton && show(broadcastingButton);
     BUTTONS.settings.lobbyButton && show(lobbyButton);
     BUTTONS.settings.sendEmailInvitation && show(sendEmailInvitation);
-    if (BUTTONS.settings.host_only_recording) {
-        show(recordingImage);
-        show(roomHostOnlyRecording);
-        show(roomRecordingOptions);
-    }
     if (rc.recSyncServerRecording) show(roomRecordingServer);
     BUTTONS.main.aboutButton && show(aboutButton);
     if (!DetectRTC.isMobileDevice) show(pinUnpinGridDiv);
@@ -1359,6 +1388,19 @@ function stopRecordingTimer() {
 // ####################################################
 
 function handleButtons() {
+    // Lobby...
+    document.getElementById('lobbyUsers').addEventListener('click', function (event) {
+        switch (event.target.id) {
+            case 'lobbyAcceptAllBtn':
+                rc.lobbyAcceptAll();
+                break;
+            case 'lobbyRejectAllBtn':
+                rc.lobbyRejectAll();
+                break;
+            default:
+                break;
+        }
+    });
     control.onmouseover = () => {
         isButtonsBarOver = true;
     };
@@ -1526,9 +1568,6 @@ function handleButtons() {
         isRecording ? stopRecButton.click() : startRecButton.click();
     };
     startRecButton.onclick = () => {
-        if (participantsCount == 1 && !rc.peer_info.peer_audio) {
-            return userLog('warning', '🔴 Recording requires your audio to be enabled', 'top-end', 6000);
-        }
         rc.startRecording();
     };
     stopRecButton.onclick = () => {
@@ -1558,16 +1597,28 @@ function handleButtons() {
         if (isPushToTalkActive) return;
         setAudioButtonsDisabled(true);
         if (!isEnumerateAudioDevices) await initEnumerateAudioDevices();
-        rc.produce(RoomClient.mediaType.audio, microphoneSelect.value);
+
+        const producerExist = rc.producerExist(RoomClient.mediaType.audio);
+        console.log('START AUDIO producerExist --->', producerExist);
+
+        producerExist
+            ? await rc.resumeProducer(RoomClient.mediaType.audio)
+            : await rc.produce(RoomClient.mediaType.audio, microphoneSelect.value);
+
         rc.updatePeerInfo(peer_name, socket.id, 'audio', true);
-        // rc.resumeProducer(RoomClient.mediaType.audio);
     };
-    stopAudioButton.onclick = () => {
+    stopAudioButton.onclick = async () => {
         if (isPushToTalkActive) return;
         setAudioButtonsDisabled(true);
-        rc.closeProducer(RoomClient.mediaType.audio);
+
+        const producerExist = rc.producerExist(RoomClient.mediaType.audio);
+        console.log('STOP AUDIO producerExist --->', producerExist);
+
+        producerExist
+            ? await rc.pauseProducer(RoomClient.mediaType.audio)
+            : await rc.closeProducer(RoomClient.mediaType.audio);
+
         rc.updatePeerInfo(peer_name, socket.id, 'audio', false);
-        // rc.pauseProducer(RoomClient.mediaType.audio);
     };
     startVideoButton.onclick = async () => {
         const moderator = rc.getModerator();
@@ -1576,20 +1627,20 @@ function handleButtons() {
         }
         setVideoButtonsDisabled(true);
         if (!isEnumerateVideoDevices) await initEnumerateVideoDevices();
-        rc.produce(RoomClient.mediaType.video, videoSelect.value);
-        // rc.resumeProducer(RoomClient.mediaType.video);
+        await rc.produce(RoomClient.mediaType.video, videoSelect.value);
+        // await rc.resumeProducer(RoomClient.mediaType.video);
     };
     stopVideoButton.onclick = () => {
         setVideoButtonsDisabled(true);
         rc.closeProducer(RoomClient.mediaType.video);
-        // rc.pauseProducer(RoomClient.mediaType.video);
+        // await rc.pauseProducer(RoomClient.mediaType.video);
     };
-    startScreenButton.onclick = () => {
+    startScreenButton.onclick = async () => {
         const moderator = rc.getModerator();
         if (moderator.screen_cant_share) {
             return userLog('warning', 'The moderator does not allow you to share the screen', 'top-end', 6000);
         }
-        rc.produce(RoomClient.mediaType.screen);
+        await rc.produce(RoomClient.mediaType.screen);
     };
     stopScreenButton.onclick = () => {
         rc.closeProducer(RoomClient.mediaType.screen);
@@ -1685,6 +1736,9 @@ function handleButtons() {
     aboutButton.onclick = () => {
         showAbout();
     };
+    // restartICE.onclick = async () => {
+    //     await rc.restartIce();
+    // };
 }
 
 // ####################################################
@@ -1813,7 +1867,7 @@ async function changeCamera(deviceId) {
             aspectRatio: 1.777,
         },
     };
-    navigator.mediaDevices
+    await navigator.mediaDevices
         .getUserMedia(videoConstraints)
         .then((camStream) => {
             initVideo.className = 'mirror';
@@ -1840,6 +1894,7 @@ function handleMediaError(mediaType, err) {
     sound('alert');
 
     let errMessage = err;
+    let getUserMediaError = true;
 
     switch (err.name) {
         case 'NotFoundError':
@@ -1862,24 +1917,30 @@ function handleMediaError(mediaType, err) {
             errMessage = 'Empty constraints object';
             break;
         default:
+            getUserMediaError = false;
             break;
     }
 
-    const $html = `
-        <ul style="text-align: left">
-            <li>Media type: ${mediaType}</li>
-            <li>Error name: ${err.name}</li>
-            <li>
-                <p>Error message:</p>
-                <p style="color: red">${errMessage}</p>
-            </li>
-            <li>Common: <a href="https://blog.addpipe.com/common-getusermedia-errors" target="_blank">getUserMedia errors</a></li>
+    let html = `
+    <ul style="text-align: left">
+        <li>Media type: ${mediaType}</li>
+        <li>Error name: ${err.name}</li>
+        <li>
+            <p>Error message:</p>
+            <p style="color: red">${errMessage}</p>
+        </li>`;
+
+    if (getUserMediaError) {
+        html += `
+        <li>Common: <a href="https://blog.addpipe.com/common-getusermedia-errors" target="_blank">getUserMedia errors</a></li>`;
+    }
+    html += `
         </ul>
     `;
 
-    const redirectURL = ['screen', 'screenType'].includes(mediaType) ? false : '/';
+    const redirectURL = ['screen', 'screenType'].includes(mediaType) || !getUserMediaError ? false : '/';
 
-    popupHtmlMessage(null, image.forbidden, 'Access denied', $html, 'center', redirectURL);
+    popupHtmlMessage(null, image.forbidden, 'Access denied', html, 'center', redirectURL);
 
     throw new Error(
         `Access denied for ${mediaType} device [${err.name}]: ${errMessage} check the common getUserMedia errors: https://blog.addpipe.com/common-getusermedia-errors/`,
@@ -1913,7 +1974,7 @@ async function toggleScreenSharing() {
     }
     joinRoomWithScreen = !joinRoomWithScreen;
     if (joinRoomWithScreen) {
-        navigator.mediaDevices
+        await navigator.mediaDevices
             .getDisplayMedia({ audio: true, video: true })
             .then((screenStream) => {
                 if (initVideo.classList.contains('mirror')) {
@@ -1988,42 +2049,42 @@ function handleSelects() {
         rc.changeAudioDestination();
         refreshLsDevices();
     };
-    switchPushToTalk.onchange = (e) => {
+    switchPushToTalk.onchange = async (e) => {
         const producerExist = rc.producerExist(RoomClient.mediaType.audio);
         if (!producerExist && !isPushToTalkActive) {
             console.log('Push-to-talk: start audio producer');
             setAudioButtonsDisabled(true);
             if (!isEnumerateAudioDevices) initEnumerateAudioDevices();
-            rc.produce(RoomClient.mediaType.audio, microphoneSelect.value);
-            setTimeout(function () {
-                rc.pauseProducer(RoomClient.mediaType.audio);
+            await rc.produce(RoomClient.mediaType.audio, microphoneSelect.value);
+            setTimeout(async function () {
+                await rc.pauseProducer(RoomClient.mediaType.audio);
                 rc.updatePeerInfo(peer_name, socket.id, 'audio', false);
             }, 1000);
         }
         isPushToTalkActive = !isPushToTalkActive;
         if (producerExist && !isPushToTalkActive) {
             console.log('Push-to-talk: resume audio producer');
-            rc.resumeProducer(RoomClient.mediaType.audio);
+            await rc.resumeProducer(RoomClient.mediaType.audio);
             rc.updatePeerInfo(peer_name, socket.id, 'audio', true);
         }
         e.target.blur(); // Removes focus from the element
         rc.roomMessage('ptt', isPushToTalkActive);
         console.log(`Push-to-talk enabled: ${isPushToTalkActive}`);
     };
-    document.addEventListener('keydown', (e) => {
+    document.addEventListener('keydown', async (e) => {
         if (!isPushToTalkActive) return;
         if (e.code === 'Space') {
             if (isSpaceDown) return;
-            rc.resumeProducer(RoomClient.mediaType.audio);
+            await rc.resumeProducer(RoomClient.mediaType.audio);
             rc.updatePeerInfo(peer_name, socket.id, 'audio', true);
             isSpaceDown = true;
             console.log('Push-to-talk: audio resumed');
         }
     });
-    document.addEventListener('keyup', (e) => {
+    document.addEventListener('keyup', async (e) => {
         if (!isPushToTalkActive) return;
         if (e.code === 'Space') {
-            rc.pauseProducer(RoomClient.mediaType.audio);
+            await rc.pauseProducer(RoomClient.mediaType.audio);
             rc.updatePeerInfo(peer_name, socket.id, 'audio', false);
             isSpaceDown = false;
             console.log('Push-to-talk: audio paused');
@@ -2533,11 +2594,14 @@ function handleRoomClientEvents() {
         console.log('Room event: Client pause audio');
         hide(stopAudioButton);
         show(startAudioButton);
+        setColor(startAudioButton, 'red');
+        setAudioButtonsDisabled(false);
     });
     rc.on(RoomClient.EVENTS.resumeAudio, () => {
         console.log('Room event: Client resume audio');
         hide(startAudioButton);
         show(stopAudioButton);
+        setAudioButtonsDisabled(false);
     });
     rc.on(RoomClient.EVENTS.stopAudio, () => {
         console.log('Room event: Client stop audio');
@@ -2558,11 +2622,15 @@ function handleRoomClientEvents() {
         console.log('Room event: Client pause video');
         hide(stopVideoButton);
         show(startVideoButton);
+        setColor(startVideoButton, 'red');
+        setVideoButtonsDisabled(false);
     });
     rc.on(RoomClient.EVENTS.resumeVideo, () => {
         console.log('Room event: Client resume video');
         hide(startVideoButton);
         show(stopVideoButton);
+        setVideoButtonsDisabled(false);
+        isVideoPrivacyActive = false;
     });
     rc.on(RoomClient.EVENTS.stopVideo, () => {
         console.log('Room event: Client stop video');
@@ -2580,9 +2648,13 @@ function handleRoomClientEvents() {
     });
     rc.on(RoomClient.EVENTS.pauseScreen, () => {
         console.log('Room event: Client pause screen');
+        hide(startScreenButton);
+        show(stopScreenButton);
     });
     rc.on(RoomClient.EVENTS.resumeScreen, () => {
         console.log('Room event: Client resume screen');
+        hide(stopScreenButton);
+        show(startScreenButton);
     });
     rc.on(RoomClient.EVENTS.stopScreen, () => {
         console.log('Room event: Client stop screen');

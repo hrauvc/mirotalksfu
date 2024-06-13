@@ -34,10 +34,11 @@ async function main() {
     const webRtcTransportIpAddress =
         webRtcTransportIpInfo.ip !== '0.0.0.0' ? webRtcTransportIpInfo.ip : webRtcTransportIpInfo.announcedAddress;
 
-    // WorkersOptions
+    // WorkersOptions | webRtcTransportOptions
     const workers = config.mediasoup.numWorkers;
-    const rtcMinPort = config.mediasoup.worker.rtcMinPort;
-    const rtcMaxPort = config.mediasoup.worker.rtcMaxPort;
+    const { min, max } = config.mediasoup.webRtcTransport.listenInfos[0].portRange;
+    const rtcMinPort = config.mediasoup.worker.rtcMinPort || min || 40000;
+    const rtcMaxPort = config.mediasoup.worker.rtcMaxPort || max || 40100;
 
     console.log('==================================');
     console.log('checkServerListenPorts');
@@ -60,7 +61,9 @@ async function main() {
         const webRtcServerIpInfo = config.mediasoup.webRtcServerOptions.listenInfos[0];
         const webRtcServerIpAddress =
             webRtcServerIpInfo.ip !== '0.0.0.0' ? webRtcServerIpInfo.ip : webRtcServerIpInfo.announcedAddress;
-        const webRtcServerStartPort = webRtcServerIpInfo.port;
+        const webRtcServerStartPort = webRtcServerIpInfo.port
+            ? webRtcServerIpInfo.port
+            : webRtcServerIpInfo.portRange.min;
 
         await checkWebRtcServerPorts(webRtcServerIpAddress, webRtcServerStartPort, workers);
     }

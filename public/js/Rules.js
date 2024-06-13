@@ -1,4 +1,4 @@
-'use-strict';
+'use strict';
 
 let isPresenter = false;
 
@@ -15,7 +15,7 @@ const isRulesActive = true;
  */
 let BUTTONS = {
     main: {
-        shareButton: true, // presenter
+        shareButton: true, // for quest, presenter default true
         hideMeButton: true,
         startAudioButton: true,
         startVideoButton: true,
@@ -105,7 +105,7 @@ function handleRules(isPresenter) {
         // ##################################
         // GUEST
         // ##################################
-        BUTTONS.main.shareButton = false;
+        //BUTTONS.main.shareButton = false;
         BUTTONS.participantsList.saveInfoButton = false;
         BUTTONS.settings.lockRoomButton = false;
         BUTTONS.settings.unlockRoomButton = false;
@@ -172,6 +172,7 @@ function handleRules(isPresenter) {
             chat_cant_privately: switchEveryoneCantChatPrivately.checked,
             chat_cant_chatgpt: switchEveryoneCantChatChatGPT.checked,
         };
+        console.log('Rules moderator data ---->', moderatorData);
         rc.updateRoomModeratorALL(moderatorData);
     }
     // main. settings...
@@ -183,6 +184,15 @@ function handleRules(isPresenter) {
     BUTTONS.settings.sendEmailInvitation ? show(sendEmailInvitation) : hide(sendEmailInvitation);
     !BUTTONS.settings.micOptionsButton && hide(micOptionsButton);
     !BUTTONS.settings.tabModerator && hide(tabModeratorBtn);
+    if (BUTTONS.settings.host_only_recording) {
+        show(recordingImage);
+        show(roomRecordingOptions);
+        show(roomHostOnlyRecording);
+    } else {
+        show(recordingImage);
+        show(roomRecordingOptions);
+        hide(roomHostOnlyRecording);
+    }
     BUTTONS.participantsList.saveInfoButton ? show(participantsSaveBtn) : hide(participantsSaveBtn);
     BUTTONS.whiteboard.whiteboardLockButton
         ? elemDisplay('whiteboardLockButton', true)

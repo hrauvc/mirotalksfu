@@ -35,6 +35,7 @@
             content="MiroTalk SFU calling provides real-time video calls, messaging and screen sharing."
         />
         <meta id="ogImage" property="og:image" content="https://sfu.mirotalk.com/images/mirotalksfu.png" />
+        <meta id="ogUrl" property="og:url" content="https://sfu.mirotalk.com" />
 
         <!-- StyleSheet -->
         <link rel="stylesheet" href="../css/Room.css" />
@@ -89,6 +90,7 @@
         <script async src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 
         <script async src="../js/Umami.js"></script>
+        <script async src="../js/Translate.js"></script>
 
         <!-- Js scripts https://cdn.jsdelivr.net -->
 
@@ -109,18 +111,20 @@
         <script defer src="https://cdn.jsdelivr.net/npm/fabric@5.3.0-browser/dist/fabric.min.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11.4.8"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/emoji-mart@latest/dist/browser.js"></script>
-        <script defer src="https://unpkg.com/@popperjs/core@2"></script>
-        <script defer src="https://unpkg.com/tippy.js@6"></script>
+        <!-- <script defer src="https://unpkg.com/@popperjs/core@2"></script>
+        <script defer src="https://unpkg.com/tippy.js@6"></script> -->
+        <script defer src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.8/umd/popper.min.js"></script>
+        <script defer src="https://cdnjs.cloudflare.com/ajax/libs/tippy.js/6.3.7/tippy-bundle.umd.min.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
         <script defer src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     </head>
-    <body onload="initClient()">
+    <body>
         <noscript>You need to enable JavaScript to run this app.</noscript>
 
         <div id="loadingDiv" class="center pulsate">
             <h1>Loading</h1>
-            <img src="../images/loading.gif" style="width: 400px" />
+            <img class="loading-img" src="../images/loading.gif" />
             <pre>
 Please allow the camera or microphone
 access to use this app.
@@ -137,28 +141,15 @@ access to use this app.
                         autoplay=""
                         class="mirror"
                         poster="../images/loader.gif"
-                        style="object-fit: contain"
                     ></video>
                 </div>
                 <div class="initComands">
-                    <button
-                        id="initVideoAudioRefreshButton"
-                        class="fas fa-rotate"
-                        onclick="refreshMyAudioVideoDevices()"
-                    ></button>
-                    <button id="initVideoButton" class="fas fa-video" onclick="handleVideo(event)"></button>
-                    <button id="initAudioButton" class="fas fa-microphone" onclick="handleAudio(event)"></button>
-                    <button id="initAudioVideoButton" class="fas fa-eye" onclick="handleAudioVideo(event)"></button>
-                    <button
-                        id="initStartScreenButton"
-                        class="fas fa-desktop hidden"
-                        onclick="toggleScreenSharing()"
-                    ></button>
-                    <button
-                        id="initStopScreenButton"
-                        class="fas fa-stop-circle hidden"
-                        onclick="toggleScreenSharing()"
-                    ></button>
+                    <button id="initVideoAudioRefreshButton" class="fas fa-rotate"></button>
+                    <button id="initVideoButton" class="fas fa-video"></button>
+                    <button id="initAudioButton" class="fas fa-microphone"></button>
+                    <button id="initAudioVideoButton" class="fas fa-eye"></button>
+                    <button id="initStartScreenButton" class="fas fa-desktop hidden"></button>
+                    <button id="initStopScreenButton" class="fas fa-stop-circle hidden"></button>
                     <select id="initVideoSelect" class="form-select text-light bg-dark"></select>
                     <select id="initMicrophoneSelect" class="form-select text-light bg-dark"></select>
                     <select id="initSpeakerSelect" class="form-select text-light bg-dark"></select>
@@ -177,7 +168,7 @@ access to use this app.
             <button id="startScreenButton" class="hidden"><i class="fas fa-desktop"></i></button>
             <button id="stopScreenButton" class="hidden"><i class="fas fa-stop-circle"></i></button>
             <button id="startRecButton" class="hidden"><i class="fas fa-record-vinyl"></i></button>
-            <button id="stopRecButton" style="color: red" class="hidden"><i class="fas fa-record-vinyl"></i></button>
+            <button id="stopRecButton" class="hidden"><i class="fas fa-record-vinyl cr"></i></button>
             <button id="raiseHandButton" class="hidden"><i class="fas fa-hand-paper"></i></button>
             <button id="lowerHandButton" class="hidden"><i id="lowerHandIcon" class="fas fa-hand-paper"></i></button>
             <button id="emojiRoomButton" class="hidden"><i class="fas fa-face-smile"></i></button>
@@ -186,6 +177,7 @@ access to use this app.
             <button id="whiteboardButton" class="hidden"><i class="fas fa-chalkboard-teacher"></i></button>
             <button id="settingsButton" class="hidden"><i class="fas fa-cogs"></i></button>
             <button id="aboutButton" class="hidden"><i class="fas fa-question"></i></button>
+            <!-- <button id="restartICE" class="hidden"><i class="fas fa-satellite-dish"></i></button> -->
             <button id="exitButton" class="hidden"><i class="fas fa-right-from-bracket"></i></button>
         </div>
 
@@ -254,7 +246,7 @@ access to use this app.
                             <i class="fas fa-lock"></i>
                             <p>Unlock room</p>
                         </button>
-                        <hr style="border: 1px solid grey" />
+                        <hr />
                         <table class="settingsTable">
                             <tr id="broadcastingButton" class="hidden">
                                 <td class="custom-width">
@@ -322,13 +314,13 @@ access to use this app.
                                 </td>
                             </tr>
                         </table>
-                        <hr style="border: 1px solid grey" />
+                        <hr />
                         <table class="settingsTable">
                             <tr>
                                 <td>
                                     <div class="title">
                                         <i class="fa-solid fa-person-shelter"></i>
-                                        <p id="roomId" style="cursor: pointer">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</p>
+                                        <p id="roomId" class="cp">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</p>
                                     </div>
                                 </td>
                             </tr>
@@ -337,7 +329,7 @@ access to use this app.
                                     <div id="sendEmailInvitation" class="hidden">
                                         <div class="title">
                                             <i class="fas fa-envelope-circle-check"></i>
-                                            <p id="roomSendEmail" style="cursor: pointer">Send email invitation</p>
+                                            <p id="roomSendEmail" class="cp">Send email invitation</p>
                                         </div>
                                     </div>
                                 </td>
@@ -608,13 +600,13 @@ access to use this app.
                             </div>
                         </div>
                         <div id="speakerSelectDiv">
-                            <hr style="border: 1px solid grey" />
+                            <hr />
                             <div class="title">
                                 <i class="fas fa-headphones"></i>
                                 <p>Speaker:</p>
                             </div>
                             <select id="speakerSelect" class="form-select text-light bg-dark"></select>
-                            <hr style="border: 1px solid grey" />
+                            <hr />
                             <button id="speakerTestBtn">
                                 <i class="fa-solid fa-circle-play"></i>
                                 <p>Test speaker</p>
@@ -622,7 +614,7 @@ access to use this app.
                             <br />
                         </div>
                         <div id="pushToTalkDiv" class="hidden">
-                            <hr style="border: 1px solid grey" />
+                            <hr />
                             <table class="settingsTable">
                                 <tr>
                                     <td class="width-150">
@@ -645,7 +637,7 @@ access to use this app.
                     <div id="tabModerator" class="tabcontent">
                         <table class="settingsTable">
                             <tr id="everyoneMuteBtn">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fas fa-microphone-slash"></i>
                                         <p>Everyone starts muted</p>
@@ -658,7 +650,7 @@ access to use this app.
                                 </td>
                             </tr>
                             <tr id="everyoneHideBtn">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fas fa-video-slash"></i>
                                         <p>Everyone starts hidden</p>
@@ -677,11 +669,11 @@ access to use this app.
                             </tr>
                             <tr>
                                 <td colspan="2">
-                                    <hr style="border: 1px solid grey" />
+                                    <hr />
                                 </td>
                             </tr>
                             <tr id="everyoneCantUnmuteBtn">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fas fa-microphone red"></i>
                                         <p>Everyone can't unmute themselves</p>
@@ -699,7 +691,7 @@ access to use this app.
                                 </td>
                             </tr>
                             <tr id="everyoneCantUnhideBtn">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fas fa-video red"></i>
                                         <p>Everyone can't unhide themselves</p>
@@ -717,7 +709,7 @@ access to use this app.
                                 </td>
                             </tr>
                             <tr id="everyoneCantShareScreenBtn">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fas fa-display red"></i>
                                         <p>Everyone can't share screen</p>
@@ -735,7 +727,7 @@ access to use this app.
                                 </td>
                             </tr>
                             <tr id="everyoneCantChatPrivatelyBtn">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fa-solid fa-comments red"></i>
                                         <p>Everyone can't chat privately</p>
@@ -753,7 +745,7 @@ access to use this app.
                                 </td>
                             </tr>
                             <tr id="everyoneCantChatGPTBtn">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fa-solid fa-robot red"></i>
                                         <p>Everyone can't use ChatGPT</p>
@@ -771,7 +763,7 @@ access to use this app.
                                 </td>
                             </tr>
                             <tr id="disconnectAllOnLeave">
-                                <td style="width: auto">
+                                <td class="wa">
                                     <div class="title">
                                         <i class="fas fa-users-slash red"></i>
                                         <p>Disconnect all upon leaving room</p>
@@ -793,7 +785,7 @@ access to use this app.
                     <div id="tabRecording" class="tabcontent">
                         <img id="recordingImage" class="hidden" src="../images/recording.png" />
                         <div id="roomRecordingOptions" class="hidden">
-                            <hr style="border: 1px solid grey" />
+                            <hr />
                             <table class="settingsTable">
                                 <tr>
                                     <td class="width-180">
@@ -811,7 +803,7 @@ access to use this app.
                             </table>
                         </div>
                         <div id="roomHostOnlyRecording" class="hidden">
-                            <hr style="border: 1px solid grey" />
+                            <hr />
                             <table class="settingsTable">
                                 <tr>
                                     <td class="width-180">
@@ -852,7 +844,7 @@ access to use this app.
                                     </td>
                                 </tr>
                             </table>
-                            <hr style="border: 1px solid grey" />
+                            <hr />
                         </div>
                         <button id="pauseRecButton" class="hidden">
                             <i class="far fa-pause-circle"></i>
@@ -863,12 +855,12 @@ access to use this app.
                             <p>Resume recording</p>
                         </button>
                         <div id="recordingTime" class="hidden">
-                            <hr style="border: 1px solid grey" />
+                            <hr />
                             <table class="settingsTable">
                                 <tr>
                                     <td class="custom-width">
                                         <div class="title">
-                                            <i style="color: red" class="fa-solid fa-circle pulsate"></i>
+                                            <i class="fa-solid fa-circle pulsate cr"></i>
                                             <p>REC time:</p>
                                         </div>
                                     </td>
@@ -1068,7 +1060,7 @@ access to use this app.
             <header id="whiteboardHeader" class="whiteboard-header">
                 <div id="whiteboardTitle" class="whiteboard-header-title">
                     <button id="whiteboardCloseBtn" class="fas fa-times"></button>
-                    <div class="form-check form-switch form-switch-md" style="margin-left: 10px">
+                    <div class="form-check form-switch form-switch-md">
                         <input id="whiteboardLockButton" class="form-check-input" type="checkbox" />
                     </div>
                 </div>
@@ -1206,7 +1198,7 @@ access to use this app.
                                     </button>
                                     <ul class="dropdown-menu text-start" aria-labelledby="chatDropDownMenu">
                                         <li>
-                                            <hr class="hr" />
+                                            <hr />
                                             <div class="title ml10">
                                                 <i class="fa-solid fa-eye"></i>
                                                 <div class="form-check form-switch form-switch-md ml10">
@@ -1220,7 +1212,7 @@ access to use this app.
                                             </div>
                                         </li>
                                         <li>
-                                            <hr class="hr" />
+                                            <hr />
                                             <div id="speechMsgDiv" class="title ml10">
                                                 <i class="fas fa-volume-high"></i>
                                                 <div class="form-check form-switch form-switch-md ml10">
@@ -1231,7 +1223,7 @@ access to use this app.
                                                     />
                                                 </div>
                                             </div>
-                                            <hr class="hr" />
+                                            <hr />
                                         </li>
                                         <li>
                                             <button id="chatGhostButton" class="btn-sm">
@@ -1323,9 +1315,9 @@ access to use this app.
                 <header id="transcriptionHeader" class="transcription-header">
                     <div class="transcription-header-title">
                         <button id="transcriptionSpeechStatus" class="fas fa-microphone-alt"></button>
-                        <div style="margin-left: 5px" class="title">
+                        <div class="title ml-5">
                             <i class="fa-solid fa-infinity"></i>
-                            <div style="margin-left: 5px" class="form-check form-switch form-switch-md">
+                            <div class="form-check form-switch form-switch-md ml-5">
                                 <input class="form-check-input" type="checkbox" id="transcriptPersistentMode" />
                             </div>
                         </div>
@@ -1346,10 +1338,10 @@ access to use this app.
                             </button>
                             <ul class="dropdown-menu text-start" aria-labelledby="transcriptionDropDownMenu">
                                 <li>
-                                    <hr class="hr" />
+                                    <hr />
                                     <div class="title ml5">
                                         <i class="fa-solid fa-eye"></i>
-                                        <div style="margin-left: 5px" class="form-check form-switch form-switch-md">
+                                        <div class="form-check form-switch form-switch-md ml-5">
                                             <input
                                                 class="form-check-input"
                                                 type="checkbox"
@@ -1358,7 +1350,7 @@ access to use this app.
                                             />
                                         </div>
                                     </div>
-                                    <hr class="hr" />
+                                    <hr />
                                 </li>
                                 <li>
                                     <button id="transcriptionGhostBtn">
@@ -1404,30 +1396,12 @@ access to use this app.
                         <tr id="lobbyAll">
                             <td>&nbsp;<i class="fas fa-users fa-lg"></i></td>
                             <td>All</td>
-                            <td>
-                                <button id="lobbyAcceptAllBtn" onclick="rc.lobbyAcceptAll()">
-                                    <i class="fas fa-check"></i>
-                                </button>
-                            </td>
-                            <td>
-                                <button id="lobbyRejectAllBtn" onclick="rc.lobbyRejectAll()">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </td>
+                            <td><button id="lobbyAcceptAllBtn" class="fas fa-check"></button></td>
+                            <td><button id="lobbyRejectAllBtn" class="fas fa-times"></button></td>
                         </tr>
                     </table>
                 </div>
             </main>
         </section>
-
-        <!-- 
-            Start Google Translate 
-        -->
-        <script>
-            function googleTranslateElementInit() {
-                new google.translate.TranslateElement({ pageLanguage: 'en' }, 'google_translate_element');
-            }
-        </script>
-        <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
     </body>
 </html>

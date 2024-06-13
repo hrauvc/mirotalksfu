@@ -35,6 +35,7 @@
 -   Unlimited conference rooms with no time limitations.
 -   Live broadcasting streaming.
 -   Translated into 133 languages.
+-   Support for the OpenID Connect (OIDC) authentication layer.
 -   Host protection to prevent unauthorized access.
 -   User auth to prevent unauthorized access.
 -   JWT.io securely manages credentials for host configurations and user authentication, enhancing security and streamlining processes.
@@ -159,7 +160,7 @@ To embed a meeting in `your service or app` using an iframe, use the following c
 
 <br/>
 
--   Before running MiroTalk SFU, ensure you have `Node.js` and all [requirements](https://mediasoup.org/documentation/v3/mediasoup/installation/#requirements) installed. This project has been tested with Node version [16.X](https://nodejs.org/en/blog/release/v16.15.1/) and [18.X](https://nodejs.org/en/download).
+-   Before running MiroTalk SFU, ensure you have `Node.js` and all [requirements](https://mediasoup.org/documentation/v3/mediasoup/installation/#requirements) installed. This project has been tested with Node version [18.X](https://nodejs.org/en/download).
 
 -   Requirements install example for `Ubuntu 20.04`
 
@@ -361,6 +362,7 @@ Do you find MiroTalk SFU indispensable for your needs? Join us in supporting thi
 | [![BroadcastX](public/sponsors/BroadcastX.png)](https://broadcastx.de/)           | [![Hetzner](public/sponsors/HetznerLogo.png)](https://hetzner.cloud/?ref=XdRifCzCK3bn) |
 | [![LuvLounge](public/sponsors/LuvLounge.png)](https://luvlounge.ca)               | [![QuestionPro](public/sponsors/QuestionPro.png)](https://www.questionpro.com)         |
 | [![BrowserStack](public/sponsors/BrowserStack.png)](https://www.browserstack.com) | [![CrystalSound](public/sponsors/CrystalSound.png)](https://crystalsound.ai)           |
+| [![Cloudron](public/sponsors/Cloudron.png)](https://cloudron.io)                  | [![Kiquix](public/sponsors/KiquixLogo.png)](https://kiquix.com)                        |
 
 </details>
 
