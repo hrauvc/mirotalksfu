@@ -20,6 +20,7 @@ dependencies: {
     express-openid-connect  : https://www.npmjs.com/package/express-openid-connect
     httpolyglot             : https://www.npmjs.com/package/httpolyglot
     jsonwebtoken            : https://www.npmjs.com/package/jsonwebtoken
+    js-yaml                 : https://www.npmjs.com/package/js-yaml
     mediasoup               : https://www.npmjs.com/package/mediasoup
     mediasoup-client        : https://www.npmjs.com/package/mediasoup-client
     ngrok                   : https://www.npmjs.com/package/ngrok
@@ -29,7 +30,6 @@ dependencies: {
     swagger-ui-express      : https://www.npmjs.com/package/swagger-ui-express
     uuid                    : https://www.npmjs.com/package/uuid
     xss                     : https://www.npmjs.com/package/xss
-    yamljs                  : https://www.npmjs.com/package/yamljs
 }
 */
 
@@ -42,7 +42,7 @@ dependencies: {
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.36
+ * @version 1.4.48
  *
  */
 
@@ -67,9 +67,9 @@ const Peer = require('./Peer');
 const ServerApi = require('./ServerApi');
 const Logger = require('./Logger');
 const log = new Logger('Server');
-const yamlJS = require('yamljs');
+const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = yamlJS.load(path.join(__dirname + '/../api/swagger.yaml'));
+const swaggerDocument = yaml.load(fs.readFileSync(path.join(__dirname, '/../api/swagger.yaml'), 'utf8'));
 const Sentry = require('@sentry/node');
 const { CaptureConsole } = require('@sentry/integrations');
 const restrictAccessByIP = require('./middleware/IpWhitelist.js');
@@ -454,14 +454,8 @@ function startServer() {
                 req.query,
             );
 
-            const allowRoomAccess = isAllowedRoomAccess('/join/params', req, hostCfg, authHost, roomList, room);
-
-            if (!allowRoomAccess) {
-                return res.status(401).json({ message: 'Direct Room Join Unauthorized' });
-            }
-
-            let peerUsername,
-                peerPassword = '';
+            let peerUsername = '';
+            let peerPassword = '';
             let isPeerValid = false;
             let isPeerPresenter = false;
 
@@ -474,15 +468,29 @@ function startServer() {
                     }
 
                     const { username, password, presenter } = checkXSS(decodeToken(token));
+
                     peerUsername = username;
                     peerPassword = password;
                     isPeerValid = await isAuthPeer(username, password);
                     isPeerPresenter = presenter === '1' || presenter === 'true';
+
+                    if (isPeerPresenter) {
+                        const roomAllowedForUser = isRoomAllowedForUser('Direct Join with token', username, room);
+                        if (!roomAllowedForUser) {
+                            return res.status(401).json({ message: 'Direct Room Join for this User is Unauthorized' });
+                        }
+                    }
                 } catch (err) {
                     log.error('Direct Join JWT error', { error: err.message, token: token });
                     return hostCfg.protected || hostCfg.user_auth
                         ? res.sendFile(views.login)
                         : res.sendFile(views.landing);
+                }
+            } else {
+                const allowRoomAccess = isAllowedRoomAccess('/join/params', req, hostCfg, authHost, roomList, room);
+                const roomAllowedForUser = isRoomAllowedForUser('Direct Join with token', name, room);
+                if (!allowRoomAccess && !roomAllowedForUser) {
+                    return res.status(401).json({ message: 'Direct Room Join Unauthorized' });
                 }
             }
 
@@ -1179,6 +1187,11 @@ function startServer() {
                 } else {
                     return cb('unauthorized');
                 }
+
+                const roomAllowedForUser = isRoomAllowedForUser('[Join]', peer_name, room.id);
+                if (!roomAllowedForUser) {
+                    return cb('notAllowed');
+                }
             }
 
             // check if banned...
@@ -1253,6 +1266,13 @@ function startServer() {
                     lobby_status: 'waiting',
                 });
                 return cb('isLobby');
+            }
+
+            if ((hostCfg.protected || hostCfg.user_auth) && isPresenter) {
+                const roomAllowedForUser = isRoomAllowedForUser('[Join]', peer_name, room.id);
+                if (!roomAllowedForUser) {
+                    return cb('notAllowed');
+                }
             }
 
             // SCENARIO: Notify when the first user join room and is awaiting assistance...
@@ -1532,6 +1552,38 @@ function startServer() {
             }
 
             log.debug('Producer resumed', { peer_name: peer_name, producer_id: producer_id });
+
+            callback('successfully');
+        });
+
+        socket.on('resumeConsumer', async ({ consumer_id }, callback) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const room = roomList.get(socket.room_id);
+
+            const peer_name = getPeerName(room, false);
+
+            const peer = room.getPeer(socket.id);
+
+            if (!peer) {
+                return callback({
+                    error: `peer with ID: "${socket.id}" for consumer with id "${consumer_id}" not found`,
+                });
+            }
+
+            const consumer = peer.getConsumer(consumer_id);
+
+            if (!consumer) {
+                return callback({ error: `consumer with id "${consumer_id}" not found` });
+            }
+
+            try {
+                await consumer.resume();
+            } catch (error) {
+                return callback({ error: error.message });
+            }
+
+            log.debug('Consumer resumed', { peer_name: peer_name, consumer_id: consumer_id });
 
             callback('successfully');
         });
@@ -1988,6 +2040,219 @@ function startServer() {
             }
         });
 
+        // https://docs.heygen.com/reference/overview-copy
+
+        socket.on('getAvatarList', async ({}, cb) => {
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+            try {
+                const response = await axios.get(`${config.videoAI.basePath}/v1/avatar.list`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Api-Key': config.videoAI.apiKey,
+                    },
+                });
+
+                const data = { response: response.data.data };
+
+                //log.debug('getAvatarList', data);
+
+                cb(data);
+            } catch (error) {
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.message });
+            }
+        });
+
+        socket.on('getVoiceList', async ({}, cb) => {
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+            try {
+                const response = await axios.get(`${config.videoAI.basePath}/v1/voice.list`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Api-Key': config.videoAI.apiKey,
+                    },
+                });
+
+                const data = { response: response.data.data };
+
+                //log.debug('getVoiceList', data);
+
+                cb(data);
+            } catch (error) {
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.message });
+            }
+        });
+
+        socket.on('streamingNew', async ({ quality, avatar_name, voice_id }, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+            try {
+                const response = await axios.post(
+                    `${config.videoAI.basePath}/v1/streaming.new`,
+                    {
+                        quality,
+                        avatar_name,
+                        voice: {
+                            voice_id: voice_id,
+                        },
+                    },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Api-Key': config.videoAI.apiKey,
+                        },
+                    },
+                );
+
+                const data = { response: response.data };
+
+                log.debug('streamingNew', data);
+
+                cb(data);
+            } catch (error) {
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error });
+            }
+        });
+
+        socket.on('streamingStart', async ({ session_id, sdp }, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+
+            try {
+                const response = await axios.post(
+                    `${config.videoAI.basePath}/v1/streaming.start`,
+                    { session_id, sdp },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Api-Key': config.videoAI.apiKey,
+                        },
+                    },
+                );
+
+                const data = { response: response.data.data };
+
+                log.debug('startSessionAi', data);
+
+                cb(data);
+            } catch (error) {
+                cb({ error: error.response?.status === 500 ? 'server error' : error });
+            }
+        });
+
+        socket.on('streamingICE', async ({ session_id, candidate }, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+
+            try {
+                const response = await axios.post(
+                    `${config.videoAI.basePath}/v1/streaming.ice`,
+                    { session_id, candidate },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Api-Key': config.videoAI.apiKey,
+                        },
+                    },
+                );
+
+                const data = { response: response.data };
+
+                log.debug('streamingICE', data);
+
+                cb(data);
+            } catch (error) {
+                log.error('Error in streamingICE:', error.response?.data || error.message); // Log detailed error
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error });
+            }
+        });
+
+        socket.on('streamingTask', async ({ session_id, text }, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+            try {
+                const response = await axios.post(
+                    `${config.videoAI.basePath}/v1/streaming.task`,
+                    {
+                        session_id,
+                        text,
+                    },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Api-Key': config.videoAI.apiKey,
+                        },
+                    },
+                );
+
+                const data = { response: response.data };
+
+                log.debug('streamingTask', data);
+
+                cb(data);
+            } catch (error) {
+                cb({ error: error.response?.status === 500 ? 'server error' : error });
+            }
+        });
+
+        socket.on('talkToOpenAI', async ({ text, context }, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+            try {
+                const systemLimit = config.videoAI.systemLimit;
+                const arr = {
+                    messages: [...context, { role: 'system', content: systemLimit }, { role: 'user', content: text }],
+                    model: 'gpt-3.5-turbo',
+                };
+                const chatCompletion = await chatGPT.chat.completions.create(arr);
+                const chatText = chatCompletion.choices[0].message.content;
+                context.push({ role: 'system', content: chatText });
+                context.push({ role: 'assistant', content: chatText });
+
+                const data = { response: chatText, context: context };
+
+                log.debug('talkToOpenAI', data);
+
+                cb(data);
+            } catch (error) {
+                cb({ error: error.message });
+            }
+        });
+
+        socket.on('streamingStop', async ({ session_id }, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+            if (!config.videoAI.enabled || !config.videoAI.apiKey)
+                return cb({ error: 'Video AI seems disabled, try later!' });
+            try {
+                const response = await axios.post(
+                    `${config.videoAI.basePath}/v1/streaming.stop`,
+                    {
+                        session_id,
+                    },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Api-Key': config.videoAI.apiKey,
+                        },
+                    },
+                );
+
+                const data = { response: response.data };
+
+                log.debug('streamingStop', data);
+
+                cb(data);
+            } catch (error) {
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error });
+            }
+        });
+
         socket.on('disconnect', async () => {
             if (!roomList.has(socket.room_id)) return;
 
@@ -2282,6 +2547,13 @@ function startServer() {
         const roomExist = roomList.has(roomId);
         const roomCount = roomList.size;
 
+        const allowRoomAccess =
+            (!hostCfg.protected && !OIDC.enabled) || // No host protection and OIDC mode enabled (default)
+            OIDCUserAuthenticated || // User authenticated via OIDC
+            hostUserAuthenticated || // User authenticated via Login
+            ((OIDCUserAuthenticated || hostUserAuthenticated) && roomCount === 0) || // User authenticated joins the first room
+            roomExist; // User Or Guest join an existing Room
+
         log.debug(logMessage, {
             OIDCUserEnabled: OIDC.enabled,
             OIDCUserAuthenticated: OIDCUserAuthenticated,
@@ -2292,16 +2564,41 @@ function startServer() {
             roomExist: roomExist,
             roomCount: roomCount,
             roomId: roomId,
+            allowRoomAccess: allowRoomAccess,
         });
 
-        const allowRoomAccess =
-            (!hostCfg.protected && !OIDC.enabled) || // No host protection and OIDC mode enabled (default)
-            OIDCUserAuthenticated || // User authenticated via OIDC
-            hostUserAuthenticated || // User authenticated via Login
-            ((OIDCUserAuthenticated || hostUserAuthenticated) && roomCount === 0) || // User authenticated joins the first room
-            roomExist; // User Or Guest join an existing Room
-
         return allowRoomAccess;
+    }
+
+    function isRoomAllowedForUser(message, username, room) {
+        log.debug('isRoomAllowedForUser ------>', { message, username, room });
+
+        if (hostCfg.protected || hostCfg.user_auth) {
+            const isInPresenterLists = config.presenters.list.includes(username);
+
+            if (isInPresenterLists) {
+                log.debug('isRoomAllowedForUser - user in presenters list room allowed', room);
+                return true;
+            }
+
+            const user = hostCfg.users.find((user) => user.username === username);
+
+            if (!user) {
+                log.debug('isRoomAllowedForUser - user not found', username);
+                return false;
+            }
+
+            if (!user.allowed_rooms || user.allowed_rooms.includes('*') || user.allowed_rooms.includes(room)) {
+                log.debug('isRoomAllowedForUser - user room allowed', room);
+                return true;
+            }
+
+            log.debug('isRoomAllowedForUser - user room not allowed', room);
+            return false;
+        }
+
+        log.debug('isRoomAllowedForUser - No host protected or user_auth enabled, user room allowed', room);
+        return true;
     }
 
     async function getPeerGeoLocation(ip) {

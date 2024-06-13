@@ -209,6 +209,9 @@ access to use this app.
                     <button id="tabRecordingBtn" class="fas fa-record-vinyl tablinks">
                         <p class="tabButtonText">Recording</p>
                     </button>
+                    <button id="tabVideoAIBtn" class="fab fa-airbnb tablinks">
+                        <p class="tabButtonText">VideoAI</p>
+                    </button>
                     <button id="tabVideoShareBtn" class="fab fa-youtube tablinks">
                         <p class="tabButtonText">Media</p>
                     </button>
@@ -876,6 +879,56 @@ access to use this app.
                         </div>
                         <br />
                         <div id="lastRecordingInfo" class="hidden"></div>
+                    </div>
+
+                    <div id="tabVideoAI" class="tabcontent">
+                        <div class="avatarsVideoAI">
+                            <video id="avatarVideoAIPreview" src="" controls="yes"></video>
+                            <hr />
+                            <table class="settingsTable">
+                                <tr id="avatars">
+                                    <td class=".width-180">
+                                        <div class="title">
+                                            <i class="fa-solid fa-users-line"></i>
+                                            <p>Show free avatars</p>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="form-check form-switch form-switch-md">
+                                            <input
+                                                id="switchAvatars"
+                                                class="form-check-input"
+                                                type="checkbox"
+                                                checked
+                                            />
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                            <hr />
+                            <div class="container-flex">
+                                <div id="avatarVideoAIcontainer"></div>
+                                <select id="avatarQuality" class="form-select text-light bg-dark">
+                                    <option value="low">Avatar Quality - Low</option>
+                                    <option value="medium" selected>Avatar Quality - Medium</option>
+                                    <option value="hight">Avatar Quality - Hight</option>
+                                </select>
+                                <select
+                                    id="avatarVoiceIDs"
+                                    name="avatarVoiceIDs"
+                                    class="form-select text-light bg-dark"
+                                >
+                                    <option value="">Select Avatar Voice</option></select
+                                ><br />
+                                <div id="audio-container">
+                                    <audio id="avatarPreviewAudio" controls></audio>
+                                </div>
+                                <br />
+                                <button id="avatarVideoAIStart" class="btn-primary">
+                                    <i class="fas fa-play"></i> Start Avatar Session
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="tabVideoShare" class="tabcontent">

@@ -11,7 +11,7 @@ if (location.href.substr(0, 5) !== 'https') location.href = 'https' + location.h
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.36
+ * @version 1.4.48
  *
  */
 
@@ -243,6 +243,8 @@ let scriptProcessor = null;
 const RoomURL = window.location.origin + '/join/' + room_id; // window.location.origin + '/join/?room=' + roomId + '&token=' + myToken
 
 let transcription;
+
+let showFreeAvatars = true;
 
 // ####################################################
 // INIT ROOM
@@ -1288,7 +1290,7 @@ function roomIsReady() {
     BUTTONS.settings.broadcastingButton && show(broadcastingButton);
     BUTTONS.settings.lobbyButton && show(lobbyButton);
     BUTTONS.settings.sendEmailInvitation && show(sendEmailInvitation);
-    if (rc.recSyncServerRecording) show(roomRecordingServer);
+    if (rc.recording.recSyncServerRecording) show(roomRecordingServer);
     BUTTONS.main.aboutButton && show(aboutButton);
     if (!DetectRTC.isMobileDevice) show(pinUnpinGridDiv);
     if (!isSpeechSynthesisSupported) hide(speechMsgDiv);
@@ -1452,6 +1454,23 @@ function handleButtons() {
     };
     tabLanguagesBtn.onclick = (e) => {
         rc.openTab(e, 'tabLanguages');
+    };
+    tabVideoAIBtn.onclick = (e) => {
+        rc.openTab(e, 'tabVideoAI');
+        rc.getAvatarList();
+        rc.getVoiceList();
+    };
+    avatarVideoAIStart.onclick = (e) => {
+        rc.stopSession();
+        rc.handleVideoAI();
+        rc.toggleMySettings();
+    };
+    switchAvatars.onchange = (e) => {
+        showFreeAvatars = e.currentTarget.checked;
+        rc.getAvatarList();
+    };
+    avatarQuality.onchange = (e) => {
+        VideoAI.quality = e.target.value;
     };
     refreshVideoDevices.onclick = async () => {
         await refreshMyVideoDevices();
@@ -2186,9 +2205,9 @@ function handleSelects() {
         e.target.blur();
     };
     switchServerRecording.onchange = (e) => {
-        rc.recSyncServerRecording = e.currentTarget.checked;
-        rc.roomMessage('recSyncServer', rc.recSyncServerRecording);
-        localStorageSettings.rec_server = rc.recSyncServerRecording;
+        rc.recording.recSyncServerRecording = e.currentTarget.checked;
+        rc.roomMessage('recSyncServer', rc.recording.recSyncServerRecording);
+        localStorageSettings.rec_server = rc.recording.recSyncServerRecording;
         lS.setSettings(localStorageSettings);
         e.target.blur();
     };
@@ -3952,7 +3971,7 @@ function showAbout() {
         position: 'center',
         title: 'WebRTC SFU',
         html: `
-        <br/>
+        <br />
         <div id="about">
             <button 
                 id="support-button" 
@@ -3962,7 +3981,7 @@ function showAbout() {
                 <i class="fas fa-heart"></i> 
                 Support
             </button>
-            <br /><br />
+            <br /><br /><br />
             Author: <a 
                 id="linkedin-button" 
                 data-umami-event="Linkedin button" 
@@ -3976,6 +3995,10 @@ function showAbout() {
                 href="mailto:miroslav.pejic.85@gmail.com?subject=MiroTalk SFU info"> 
                 miroslav.pejic.85@gmail.com
             </a>
+            <br /><br />
+            <hr />
+            <span>&copy; 2024 MiroTalk SFU, all rights reserved</span>
+            <hr />
         </div>
         `,
         showClass: { popup: 'animate__animated animate__fadeInDown' },

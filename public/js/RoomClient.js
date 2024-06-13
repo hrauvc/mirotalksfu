@@ -9,7 +9,7 @@
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.36
+ * @version 1.4.48
  *
  */
 
@@ -149,6 +149,19 @@ const enums = {
     //...
 };
 
+// HeyGen config
+const VideoAI = {
+    enabled: true,
+    active: false,
+    info: {},
+    avatar: null,
+    avatarName: 'Monica',
+    avatarVoice: '',
+    quality: 'medium',
+    virtualBackground: true,
+    background: '../images/virtual/1.jpg',
+};
+
 // Recording
 let recordedBlobs = [];
 
@@ -204,6 +217,13 @@ class RoomClient {
         this.chatMessageNotifyDelay = 10000; // ms
         this.chatMessageSpamCount = 0;
         this.chatMessageSpamCountToBan = 10;
+
+        // HeyGen Video AI
+        this.videoAIContainer = null;
+        this.videoAIElement = null;
+        this.canvasAIElement = null;
+        this.renderAIToken = null;
+        this.peerConnection = null;
 
         this.isAudioAllowed = isAudioAllowed;
         this.isVideoAllowed = isVideoAllowed;
@@ -270,7 +290,10 @@ class RoomClient {
         this.mediaRecorder = null;
         this.audioRecorder = null;
         this.recScreenStream = null;
-        this.recSyncServerRecording = false;
+        this.recording = {
+            recSyncServerRecording: false,
+            recSyncServerEndpoint: '',
+        };
         this.recSyncTime = 4000; // 4 sec
         this.recSyncChunkSize = 1000000; // 1MB
 
@@ -356,6 +379,12 @@ class RoomClient {
             .request('join', data)
             .then(async (room) => {
                 console.log('##### JOIN ROOM #####', room);
+                if (room === 'notAllowed') {
+                    console.log(
+                        '00-WARNING ----> Room is Unauthorized for current user, please provide a valid room name for this user',
+                    );
+                    return this.userRoomNotAllowed();
+                }
                 if (room === 'unauthorized') {
                     console.log(
                         '00-WARNING ----> Room is Unauthorized for current user, please provide a valid username and password',
@@ -444,15 +473,16 @@ class RoomClient {
             }
 
             // ###################################################################################################
-            if (room.recSyncServerRecording) {
+            if (room.recording) this.recording = room.recording;
+            if (room.recording && room.recording.recSyncServerRecording) {
                 console.log('07.1 WARNING ----> SERVER SYNC RECORDING ENABLED!');
-                this.recSyncServerRecording = localStorageSettings.rec_server;
+                this.recording.recSyncServerRecording = localStorageSettings.rec_server;
                 if (BUTTONS.settings.tabRecording && !room.config.hostOnlyRecording) {
                     show(roomRecordingServer);
                 }
-                switchServerRecording.checked = this.recSyncServerRecording;
+                switchServerRecording.checked = this.recording.recSyncServerRecording;
             }
-            console.log('07.1 ----> SERVER SYNC RECORDING', this.recSyncServerRecording);
+            console.log('07.1 ----> SERVER SYNC RECORDING', this.recording);
             // ###################################################################################################
 
             // Handle Room moderator rules
@@ -490,7 +520,13 @@ class RoomClient {
                 this._moderator.audio_cant_unmute ? hide(tabAudioDevicesBtn) : show(tabAudioDevicesBtn);
                 this._moderator.video_cant_unhide ? hide(tabVideoDevicesBtn) : show(tabVideoDevicesBtn);
             }
+            // Check if VideoAI is enabled
+            if (!room.videoAIEnabled) {
+                VideoAI.enabled = false;
+                elemDisplay('tabVideoAIBtn', false);
+            }
         }
+
         // PARTICIPANTS
         for (let peer of Array.from(peers.keys()).filter((id) => id !== this.peer_id)) {
             let peer_info = peers.get(peer).peer_info;
@@ -2034,6 +2070,14 @@ class RoomClient {
 
             this.consumers.set(consumer.id, consumer);
 
+            // https://mediasoup.discourse.group/t/create-server-side-consumers-with-paused-true/244
+            try {
+                const response = await this.socket.request('resumeConsumer', { consumer_id: consumer.id });
+                console.log('Consumer resumed', response);
+            } catch (error) {
+                console.error('Error resuming consumer', error);
+            }
+
             consumer.on('trackended', () => {
                 console.log('Consumer track end', { id: consumer.id });
                 this.removeConsumer(consumer.id, consumer.kind);
@@ -2488,6 +2532,8 @@ class RoomClient {
     // ####################################################
 
     exit(offline = false) {
+        if (VideoAI.active) this.stopSession();
+
         const clean = () => {
             this._isConnected = false;
             if (this.consumerTransport) this.consumerTransport.close();
@@ -3682,7 +3728,10 @@ class RoomClient {
                     this.setMsgAvatar('right', 'ChatGPT');
                     this.appendMessage('right', image.chatgpt, 'ChatGPT', this.peer_id, message, 'ChatGPT', 'ChatGPT');
                     this.cleanMessage();
-                    this.speechInMessages ? this.speechMessage(true, 'ChatGPT', message) : this.sound('message');
+                    this.streamingTask(message); // Video AI avatar speak
+                    this.speechInMessages && !VideoAI.active
+                        ? this.speechMessage(true, 'ChatGPT', message)
+                        : this.sound('message');
                 })
                 .catch((err) => {
                     console.log('ChatGPT error:', err);
@@ -3777,7 +3826,14 @@ class RoomClient {
         if (!this.showChatOnMessage) {
             this.userLog('info', `💬 New message from: ${data.peer_name}`, 'top-end');
         }
-        this.speechInMessages ? this.speechMessage(true, data.peer_name, data.peer_msg) : this.sound('message');
+
+        if (this.speechInMessages) {
+            VideoAI.active
+                ? this.streamingTask(`New message from: ${data.peer_name}, the message is: ${data.peer_msg}`)
+                : this.speechMessage(true, data.peer_name, data.peer_msg);
+        } else {
+            this.sound('message');
+        }
 
         const participantsList = this.getId('participantsList');
         const participantsListItems = participantsList.getElementsByTagName('li');
@@ -3816,11 +3872,13 @@ class RoomClient {
             ? `<span class="message-data-time">${time}, ${getFromName} ( me ) </span>`
             : `<span class="message-data-time">${time}, ${getFromName} </span>`;
 
+        const formatMessage = this.formatMsg(getMsg);
+        console.log('FormatMessage', formatMessage);
         const speechButton = this.isSpeechSynthesisSupported
             ? `<button 
                     id="msg-speech-${chatMessagesId}" 
                     class="mr5" 
-                    onclick="rc.speechMessage(false, '${getFromName}', '${this.formatMsg(getMsg)}')">
+                    onclick="rc.speechText('${formatMessage}')">
                     <i class="fas fa-volume-high"></i>
                 </button>`
             : '';
@@ -4061,10 +4119,14 @@ class RoomClient {
     }
 
     speechText(msg) {
-        const speech = new SpeechSynthesisUtterance();
-        speech.text = msg;
-        speech.rate = 0.9;
-        window.speechSynthesis.speak(speech);
+        if (VideoAI.active) {
+            this.streamingTask(msg);
+        } else {
+            const speech = new SpeechSynthesisUtterance();
+            speech.text = msg;
+            speech.rate = 0.9;
+            window.speechSynthesis.speak(speech);
+        }
     }
 
     chatToggleBg() {
@@ -4276,9 +4338,12 @@ class RoomClient {
         const audioElements = document.querySelectorAll('audio');
         const audioTracks = [];
         audioElements.forEach((audio) => {
-            const audioTrack = audio.srcObject.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTracks.push(audioTrack);
+            // Exclude avatar Preview Audio
+            if (audio.id !== 'avatarPreviewAudio') {
+                const audioTrack = audio.srcObject.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTracks.push(audioTrack);
+                }
             }
         });
         return audioTracks;
@@ -4288,9 +4353,12 @@ class RoomClient {
         const audioElements = document.querySelectorAll('audio');
         const audioStream = new MediaStream();
         audioElements.forEach((audio) => {
-            const audioTrack = audio.srcObject.getAudioTracks()[0];
-            if (audioTrack) {
-                audioStream.addTrack(audioTrack);
+            // Exclude avatar Preview Audio
+            if (audio.id !== 'avatarPreviewAudio') {
+                const audioTrack = audio.srcObject.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioStream.addTrack(audioTrack);
+                }
             }
         });
         return audioStream;
@@ -4299,7 +4367,9 @@ class RoomClient {
     handleMediaRecorder() {
         if (this.mediaRecorder) {
             this.recServerFileName = this.getServerRecFileName();
-            rc.recSyncServerRecording ? this.mediaRecorder.start(this.recSyncTime) : this.mediaRecorder.start();
+            rc.recording.recSyncServerRecording
+                ? this.mediaRecorder.start(this.recSyncTime)
+                : this.mediaRecorder.start();
             this.mediaRecorder.addEventListener('start', this.handleMediaRecorderStart);
             this.mediaRecorder.addEventListener('dataavailable', this.handleMediaRecorderData);
             this.mediaRecorder.addEventListener('stop', this.handleMediaRecorderStop);
@@ -4323,7 +4393,7 @@ class RoomClient {
     handleMediaRecorderData(evt) {
         // console.log('MediaRecorder data: ', evt);
         if (evt.data && evt.data.size > 0) {
-            rc.recSyncServerRecording ? rc.syncRecordingInCloud(evt.data) : recordedBlobs.push(evt.data);
+            rc.recording.recSyncServerRecording ? rc.syncRecordingInCloud(evt.data) : recordedBlobs.push(evt.data);
         }
     }
 
@@ -4334,11 +4404,15 @@ class RoomClient {
         for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
             const chunk = arrayBuffer.slice(chunkIndex * chunkSize, (chunkIndex + 1) * chunkSize);
             try {
-                await axios.post('/recSync?fileName=' + rc.recServerFileName, chunk, {
-                    headers: {
-                        'Content-Type': 'application/octet-stream',
+                await axios.post(
+                    `${this.recording.recSyncServerEndpoint}/recSync?fileName=` + rc.recServerFileName,
+                    chunk,
+                    {
+                        headers: {
+                            'Content-Type': 'application/octet-stream',
+                        },
                     },
-                });
+                );
             } catch (error) {
                 console.error('Error syncing chunk:', error.message);
             }
@@ -4348,7 +4422,7 @@ class RoomClient {
     handleMediaRecorderStop(evt) {
         try {
             console.log('MediaRecorder stopped: ', evt);
-            rc.recSyncServerRecording ? rc.handleServerRecordingStop() : rc.handleLocalRecordingStop();
+            rc.recording.recSyncServerRecording ? rc.handleServerRecordingStop() : rc.handleLocalRecordingStop();
             rc.disableRecordingOptions(false);
         } catch (err) {
             console.error('Recording save failed', err);
@@ -5505,6 +5579,23 @@ class RoomClient {
     // ####################################################
     // HANDLE ROOM ACTION
     // ####################################################
+
+    userRoomNotAllowed() {
+        this.sound('alert');
+        Swal.fire({
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            background: swalBackground,
+            imageUrl: image.forbidden,
+            title: 'Oops, Room not allowed',
+            text: 'This room is not allowed for this user',
+            confirmButtonText: `OK`,
+            showClass: { popup: 'animate__animated animate__fadeInDown' },
+            hideClass: { popup: 'animate__animated animate__fadeOutUp' },
+        }).then(() => {
+            openURL(`/`); // Select the new allowed room name for this user and login to join
+        });
+    }
 
     userUnauthorized() {
         this.sound('alert');
@@ -6769,6 +6860,471 @@ class RoomClient {
                 );
             }
         });
+    }
+
+    // ##############################################
+    // HeyGen Video AI
+    // ##############################################
+
+    getAvatarList() {
+        this.socket
+            .request('getAvatarList')
+            .then(function (completion) {
+                const avatarVideoAIPreview = document.getElementById('avatarVideoAIPreview');
+                const avatarVideoAIcontainer = document.getElementById('avatarVideoAIcontainer');
+                avatarVideoAIcontainer.innerHTML = ''; // cleanup the avatar container
+
+                const excludedIds = [
+                    'josh_lite3_20230714',
+                    'josh_lite_20230714',
+                    'Lily_public_lite1_20230601',
+                    'Brian_public_lite1_20230601',
+                    'Brian_public_lite2_20230601',
+                    'Eric_public_lite1_20230601',
+                    'Mido-lite-20221128',
+                ];
+
+                const freeAvatars = [
+                    'Kristin in Black Suit',
+                    'Angela in Black Dress',
+                    'Kayla in Casual Suit',
+                    'Anna in Brown T-shirt',
+                    'Briana in Brown suit',
+                    'Justin in White Shirt',
+                    'Leah in Black Suit',
+                    'Wade in Black Jacket',
+                    'Tyler in Casual Suit',
+                    'Tyler in Shirt',
+                    'Tyler in Suit',
+                    'default',
+                ];
+
+                completion.response.avatars.forEach((avatar) => {
+                    avatar.avatar_states.forEach((avatarUi) => {
+                        if (
+                            !excludedIds.includes(avatarUi.id) &&
+                            (showFreeAvatars ? freeAvatars.includes(avatarUi.pose_name) : true)
+                        ) {
+                            const div = document.createElement('div');
+                            div.style.float = 'left';
+                            div.style.padding = '5px';
+                            div.style.width = '100px';
+                            div.style.height = '200px';
+                            const img = document.createElement('img');
+                            const hr = document.createElement('hr');
+                            const label = document.createElement('label');
+                            const textContent = document.createTextNode(avatarUi.pose_name);
+                            label.appendChild(textContent);
+                            //label.style.fontSize = '12px';
+                            img.setAttribute('id', avatarUi.id);
+                            img.setAttribute('class', 'avatarImg');
+                            img.setAttribute('src', avatarUi.normal_thumbnail_medium);
+                            img.setAttribute('width', '100%');
+                            img.setAttribute('height', 'auto');
+                            img.setAttribute('alt', avatarUi.pose_name);
+                            img.setAttribute('style', 'cursor:pointer; padding: 2px; border-radius: 5px;');
+                            img.setAttribute(
+                                'avatarData',
+                                avatarUi.id +
+                                    '|' +
+                                    avatar.name +
+                                    '|' +
+                                    avatarUi.default_voice.free.voice_id +
+                                    '|' +
+                                    avatarUi.video_url.grey,
+                            );
+                            img.onclick = () => {
+                                const avatarImages = document.querySelectorAll('.avatarImg');
+                                avatarImages.forEach((image) => {
+                                    image.style.border = 'none';
+                                });
+                                img.style.border = 'var(--border)';
+                                const avatarData = img.getAttribute('avatarData');
+                                const avatarDataArr = avatarData.split('|');
+                                VideoAI.avatar = avatarDataArr[0];
+                                VideoAI.avatarName = avatarDataArr[1];
+                                VideoAI.avatarVoice = avatarDataArr[2] ? avatarDataArr[2] : '';
+                                avatarVideoAIPreview.src = avatarUi.video_url.grey;
+                                avatarVideoAIPreview.play();
+                                console.log('Avatar image click event', {
+                                    avatar,
+                                    avatarUi,
+                                    avatarDataArr,
+                                });
+                            };
+                            div.append(img);
+                            div.append(hr);
+                            div.append(label);
+                            avatarVideoAIcontainer.append(div);
+                            // Show the first available free avatar
+                            if (showFreeAvatars && avatarUi.pose_name === 'Kristin in Black Suit') {
+                                avatarVideoAIPreview.src = avatarUi.video_url.grey;
+                                avatarVideoAIPreview.play();
+                            }
+                        }
+                    });
+                });
+            })
+            .catch((err) => {
+                console.error('Video AI getAvatarList error:', err);
+            });
+    }
+
+    getVoiceList() {
+        this.socket
+            .request('getVoiceList')
+            .then(function (completion) {
+                const selectElement = document.getElementById('avatarVoiceIDs');
+                selectElement.innerHTML = '<option value="">Select Avatar Voice</option>'; // Reset options with default
+
+                // Sort the list alphabetically by language
+                const sortedList = completion.response.list.sort((a, b) => a.language.localeCompare(b.language));
+
+                sortedList.forEach((flag) => {
+                    // console.log('flag', flag);
+                    const { is_paid, voice_id, language, display_name, gender } = flag;
+                    if (showFreeAvatars ? is_paid == false : true) {
+                        const option = document.createElement('option');
+                        option.value = voice_id;
+                        option.text = `${language}, ${display_name} (${gender})`; // You can customize the display text
+                        selectElement.appendChild(option);
+                    }
+                });
+
+                // Event listener for changes on select element
+                selectElement.addEventListener('change', (event) => {
+                    const selectedVoiceID = event.target.value;
+                    const selectedPreviewURL = completion.response.list.find(
+                        (flag) => flag.voice_id === selectedVoiceID,
+                    )?.preview?.movio;
+                    VideoAI.avatarVoice = selectedVoiceID;
+                    if (selectedPreviewURL) {
+                        const avatarPreviewAudio = document.getElementById('avatarPreviewAudio');
+                        avatarPreviewAudio.src = selectedPreviewURL;
+                        avatarPreviewAudio.play();
+                    }
+                });
+            })
+            .catch((err) => {
+                console.error('Video AI getVoiceList error:', err);
+            });
+    }
+
+    async handleVideoAI() {
+        const vb = document.createElement('div');
+        vb.setAttribute('id', 'avatar__vb');
+        vb.className = 'videoMenuBar fadein';
+
+        const fs = document.createElement('button');
+        fs.id = 'avatar__fs';
+        fs.className = html.fullScreen;
+
+        const pin = document.createElement('button');
+        pin.id = 'avatar__pin';
+        pin.className = html.pin;
+
+        const ss = document.createElement('button');
+        ss.id = 'avatar__stopSession';
+        ss.className = html.kickOut;
+
+        const avatarName = document.createElement('div');
+        const an = document.createElement('span');
+        an.id = 'avatar__name';
+        an.className = html.userName;
+        an.innerText = VideoAI.avatarName;
+
+        // Create video container element
+        this.videoAIContainer = document.createElement('div');
+        this.videoAIContainer.className = 'Camera';
+        this.videoAIContainer.id = 'videoAIContainer';
+
+        // Create canvas element for video rendering
+        this.canvasAIElement = document.createElement('canvas');
+        this.canvasAIElement.className = '';
+        this.canvasAIElement.id = 'canvasAIElement';
+        this.canvasAIElement.style.objectFit = this.isMobileDevice ? 'cover' : 'contain';
+
+        // Create video element for avatar
+        this.videoAIElement = document.createElement('video');
+        this.videoAIElement.id = 'videoAIElement';
+        this.videoAIElement.setAttribute('playsinline', true);
+        this.videoAIElement.autoplay = true;
+        this.videoAIElement.className = '';
+        this.videoAIElement.poster = image.poster;
+        this.videoAIElement.style.objectFit = this.isMobileDevice ? 'cover' : 'contain';
+
+        // Append elements to video container
+        vb.appendChild(ss);
+        this.isVideoFullScreenSupported && vb.appendChild(fs);
+        !this.isMobileDevice && vb.appendChild(pin);
+        avatarName.appendChild(an);
+
+        this.videoAIContainer.appendChild(this.videoAIElement);
+        VideoAI.virtualBackground && this.videoAIContainer.appendChild(this.canvasAIElement);
+        this.videoAIContainer.appendChild(vb);
+        this.videoAIContainer.appendChild(avatarName);
+        this.videoMediaContainer.appendChild(this.videoAIContainer);
+
+        // Hide canvas initially
+        this.canvasAIElement.hidden = true;
+
+        // Use video avatar virtual background
+        if (VideoAI.virtualBackground) {
+            this.isVideoFullScreenSupported && this.handleFS(this.canvasAIElement.id, fs.id);
+            this.handlePN(this.canvasAIElement.id, pin.id, this.videoAIContainer.id, true);
+        } else {
+            this.isVideoFullScreenSupported && this.handleFS(this.videoAIElement.id, fs.id);
+            this.handlePN(this.videoAIElement.id, pin.id, this.videoAIContainer.id, true);
+        }
+
+        ss.onclick = () => {
+            this.stopSession();
+        };
+
+        if (!this.isMobileDevice) {
+            this.setTippy(pin.id, 'Toggle Pin', 'bottom');
+            this.setTippy(fs.id, 'Toggle full screen', 'bottom');
+            this.setTippy(ss.id, 'Stop VideoAI session', 'bottom');
+        }
+
+        handleAspectRatio();
+
+        await this.streamingNew();
+    }
+
+    async streamingNew() {
+        try {
+            const { quality, avatar, avatarVoice } = VideoAI;
+
+            const response = await this.socket.request('streamingNew', {
+                quality: quality,
+                avatar_name: avatar,
+                voice_id: avatarVoice,
+            });
+
+            if (!response || Object.keys(response).length === 0 || response.error) {
+                this.userLog('error', 'Error to creating the avatar', 'top-end');
+                this.stopSession();
+                return;
+            }
+
+            if (response.response.code !== 100) {
+                this.userLog('warning', response.response.message, 'top-end');
+                this.stopSession();
+                return;
+            }
+
+            VideoAI.info = response.response.data;
+
+            console.log('Video AI streamingNew', VideoAI);
+
+            const { sdp, ice_servers2 } = VideoAI.info;
+
+            await this.setupPeerConnection(sdp, ice_servers2);
+
+            await this.startSession();
+        } catch (error) {
+            this.userLog('error', error, 'top-end');
+            console.error('Video AI streamingNew error:', error);
+            this.stopSession();
+        }
+    }
+
+    async setupPeerConnection(sdp, iceServers) {
+        this.peerConnection = new RTCPeerConnection({ iceServers: iceServers });
+
+        this.peerConnection.ontrack = (event) => {
+            if (event.track.kind === 'audio' || event.track.kind === 'video') {
+                this.videoAIElement.srcObject = event.streams[0];
+            }
+        };
+
+        this.peerConnection.ondatachannel = (event) => {
+            event.channel.onmessage = this.handleVideoAIMessage;
+        };
+
+        const remoteDescription = new RTCSessionDescription(sdp);
+        this.peerConnection.setRemoteDescription(remoteDescription);
+    }
+
+    handleVideoAIMessage(event) {
+        console.log('handleVideoAIMessage', event.data);
+    }
+
+    async startSession() {
+        if (!VideoAI.info) {
+            this.userLog('warning', 'Please create a connection first', 'top-end');
+            return;
+        }
+        this.userLog('info', 'Starting session... please wait', 'top-end');
+        try {
+            const answer = await this.peerConnection.createAnswer();
+
+            await this.peerConnection.setLocalDescription(answer);
+
+            await this.streamingStart(VideoAI.info.session_id, answer);
+
+            this.peerConnection.onicecandidate = async ({ candidate }) => {
+                if (candidate) {
+                    await this.streamingICE(candidate);
+                }
+            };
+        } catch (error) {
+            this.userLog('error', error, 'top-end');
+            console.error('Video AI startSession error:', error);
+        }
+    }
+
+    async streamingICE(candidate) {
+        try {
+            const response = await this.socket.request('streamingICE', {
+                session_id: VideoAI.info.session_id,
+                candidate: candidate.toJSON(),
+            });
+
+            if (response && !response.error) {
+                return response.response;
+            }
+        } catch (error) {
+            console.error('Video AI streamingICE error:', error);
+        }
+    }
+
+    async streamingStart(sessionId, sdp) {
+        try {
+            const response = await this.socket.request('streamingStart', {
+                session_id: sessionId,
+                sdp: sdp,
+            });
+
+            if (!response || response.error) return;
+
+            this.startRendering();
+
+            VideoAI.active = true;
+
+            this.userLog('info', 'Video AI streaming started', 'top-end');
+        } catch (error) {
+            console.error('Video AI streamingStart error:', error);
+        }
+    }
+
+    streamingTask(message) {
+        if (VideoAI.enabled && VideoAI.active && message) {
+            const response = this.socket.request('streamingTask', {
+                session_id: VideoAI.info.session_id,
+                text: message,
+            });
+            console.log('Video AI streamingTask', response);
+        }
+    }
+
+    startRendering() {
+        if (!VideoAI.virtualBackground) return;
+
+        let frameCounter = 0;
+
+        this.renderAIToken = Math.trunc(1e9 * Math.random());
+        frameCounter = this.renderAIToken;
+
+        this.videoAIElement.hidden = true;
+        this.canvasAIElement.hidden = false;
+
+        const context = this.canvasAIElement.getContext('2d', { willReadFrequently: true });
+
+        const renderFrame = () => {
+            if (this.renderAIToken !== frameCounter) return;
+
+            if (this.videoAIElement.videoWidth === 0 || this.videoAIElement.videoHeight === 0) {
+                requestAnimationFrame(renderFrame);
+                return;
+            }
+
+            this.canvasAIElement.width = this.videoAIElement.videoWidth;
+            this.canvasAIElement.height = this.videoAIElement.videoHeight;
+
+            context.drawImage(this.videoAIElement, 0, 0, this.canvasAIElement.width, this.canvasAIElement.height);
+
+            const imageData = context.getImageData(0, 0, this.canvasAIElement.width, this.canvasAIElement.height);
+            const pixels = imageData.data;
+
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (shouldHidePixel([pixels[i], pixels[i + 1], pixels[i + 2]])) {
+                    pixels[i + 3] = 0; // Make pixel transparent
+                }
+            }
+
+            function shouldHidePixel([r, g, b]) {
+                const greenThreshold = 90;
+                const redThreshold = 90;
+                const blueThreshold = 90;
+                return g > greenThreshold && r < redThreshold && b < blueThreshold;
+            }
+
+            context.putImageData(imageData, 0, 0);
+            requestAnimationFrame(renderFrame);
+        };
+
+        // Ensure the video element is ready before starting rendering
+        const startRenderingWhenReady = () => {
+            if (this.videoAIElement.readyState >= 2) {
+                // HAVE_CURRENT_DATA
+                renderFrame();
+            } else {
+                this.videoAIElement.addEventListener('loadeddata', renderFrame, { once: true });
+            }
+        };
+
+        // Set the background of the canvas' parent element to an image or color of your choice
+        this.canvasAIElement.parentElement.style.background = `url("${VideoAI.background}") center / cover no-repeat`;
+
+        setTimeout(startRenderingWhenReady, 1000);
+    }
+
+    stopRendering() {
+        this.renderAIToken = null;
+    }
+
+    stopSession() {
+        const videoAIElement = this.getId('videoAIElement');
+        if (videoAIElement) {
+            videoAIElement.parentNode.removeChild(videoAIElement);
+        }
+        const videoAIContainer = this.getId('videoAIContainer');
+        if (videoAIContainer) {
+            videoAIContainer.parentNode.removeChild(videoAIContainer);
+            const removeVideoAI = ['videoAIElement', 'canvasAIElement'];
+            if (this.isVideoPinned && removeVideoAI.includes(this.pinnedVideoPlayerId)) {
+                this.removeVideoPinMediaContainer();
+            }
+        }
+
+        handleAspectRatio();
+
+        this.streamingStop();
+    }
+
+    streamingStop() {
+        if (this.peerConnection) {
+            console.info('Video AI streamingStop peerConnection close done!');
+            this.peerConnection.close();
+            this.peerConnection = null;
+        }
+        if (VideoAI.info && VideoAI.info.session_id) {
+            const sessionId = VideoAI.info.session_id;
+            this.socket
+                .request('streamingStop', { session_id: sessionId })
+                .then(() => {
+                    console.info('Video AI streamingStop done!');
+                })
+                .catch((error) => {
+                    console.error('Video AI streamingStop error:', error);
+                });
+        }
+
+        this.stopRendering();
+
+        VideoAI.active = false;
     }
 
     sleep(ms) {
