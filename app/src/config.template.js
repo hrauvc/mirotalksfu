@@ -19,8 +19,6 @@ function getIPv4() {
 
 const IPv4 = getIPv4();
 
-const numWorkers = require('os').cpus().length;
-
 module.exports = {
     console: {
         /*
@@ -55,7 +53,7 @@ module.exports = {
                 Note: if you use Docker: Create the "app/rec" directory, configure it as a volume in docker-compose.yml, 
                 ensure proper permissions, and start the Docker container.
             */
-            enabled: false,
+            enabled: true,
             endpoint: '', // Change the URL if you want to save the recording to a different server or cloud service (http://localhost:8080), otherwise leave it as is (empty).
             dir: 'rec',
         },
@@ -73,15 +71,15 @@ module.exports = {
     },
     api: {
         // Default secret key for app/api
-        keySecret: 'mirotalksfu_default_secret',
+        keySecret: 'your_api_secret_key',
         // Define which endpoints are allowed
         allowed: {
-            meetings: false,
+            meetings: true,
             meeting: true,
             join: true,
-            token: false,
-            s3Upload: false,
-            generatePresignedUrl: false,
+            token: true,
+            s3Upload: true,
+            generatePresignedUrl: true,
             slack: true,
             //...
         },
@@ -91,7 +89,7 @@ module.exports = {
             JWT https://jwt.io/
             Securely manages credentials for host configurations and user authentication, enhancing security and streamlining processes.
          */
-        key: 'mirotalksfu_jwt_secret',
+        key: 'F1S6D81H6D8F4G6H8D5F4GH8DF',
         exp: '1h',
     },
     oidc: {
@@ -129,28 +127,21 @@ module.exports = {
             Host Protection (default: false)
             To enhance host security, enable host protection - user auth and provide valid
             usernames and passwords in the users array or active users_from_db using users_api_endpoint for check.
-            When oidc.enabled is utilized alongside host protection, the authenticated user will be recognized as valid.
         */
         protected: false,
-        user_auth: false,
+        user_auth: true,
         users_from_db: false, // if true ensure that api.token is also set to true.
-        //users_api_endpoint: 'http://localhost:9000/api/v1/user/isAuth',
-        users_api_endpoint: 'https://webrtc.mirotalk.com/api/v1/user/isAuth',
-        users_api_secret_key: 'mirotalkweb_default_secret',
+        users_api_endpoint: 'http://localhost:9000/api/v1/user/isAuth',
+        //users_api_endpoint: 'https://webrtc.mirotalk.com/api/v1/user/isAuth',
+        users_api_secret_key: 'dNC}jG3>vf}KnI_9w=(shJ_akRetPdMA:By{.Uy4C3%^9Q<%y*&#fC0.w}ElrI[',
         users: [
             {
-                username: 'username',
-                password: 'password',
-                allowed_rooms: ['*'],
+                username: 'a5dfb1b0-1b1b-4b1b-8b1b-1bsdfb',
+                password: 'gf$fs4-4afdaa4($vfcd4%)MF(/',
             },
             {
-                username: 'username2',
-                password: 'password2',
-                allowed_rooms: ['room1', 'room2'],
-            },
-            {
-                username: 'username3',
-                password: 'password3',
+                username: 'fa-d4sg5sdg-sd54bw-d5j456-4j5fd',
+                password: 'f4$HDFH5bvqw438b5234',
             },
             //...
         ],
@@ -164,7 +155,7 @@ module.exports = {
             'Miroslav Pejic',
             'miroslav.pejic.85@gmail.com',
         ],
-        join_first: true, // Set to true for traditional behavior, false to prioritize presenters
+        join_first: false, // Set to true for traditional behavior, false to prioritize presenters
     },
     chatGPT: {
         /*
@@ -173,9 +164,9 @@ module.exports = {
             2. Create your account
             3. Generate your APIKey https://platform.openai.com/account/api-keys
         */
-        enabled: false,
+        enabled: true,
         basePath: 'https://api.openai.com/v1/',
-        apiKey: '',
+        apiKey: 'your-gpt-key-here',
         model: 'gpt-3.5-turbo',
         max_tokens: 1000,
         temperature: 0,
@@ -263,8 +254,8 @@ module.exports = {
             Upon leaving the room, users who either opt out of providing feedback or if the survey is disabled 
             will be redirected to a specified URL. If enabled false the default '/newroom' URL will be used.
         */
-        enabled: false,
-        url: '',
+        enabled: true,
+        url: 'https://innoboxrr.com',
     },
     ui: {
         /*
@@ -300,7 +291,7 @@ module.exports = {
                 features: true,
                 teams: true, // Please keep me always visible, thank you!
                 tryEasier: true,
-                poweredBy: true,
+                poweredBy: false,
                 sponsors: true,
                 advertisers: true,
                 footer: true,
@@ -324,7 +315,7 @@ module.exports = {
                 whiteboardButton: true,
                 emojiRoomButton: true,
                 settingsButton: true,
-                aboutButton: true, // Please keep me always visible, thank you!
+                aboutButton: false, // Please keep me always visible, thank you!
                 exitButton: true,
             },
             settings: {
@@ -395,129 +386,36 @@ module.exports = {
             //...
         },
     },
-    middleware: {
-        /*
-            Middleware:
-                - IP Whitelist: Access to the instance is restricted to only the specified IP addresses in the allowed list. This feature is disabled by default.
-                - ...
-        */
-        IpWhitelist: {
-            enabled: false,
-            allowed: ['127.0.0.1', '::1'],
-        },
-    },
-    console: {
-        /*
-            timeZone: Time Zone corresponding to timezone identifiers from the IANA Time Zone Database es 'Europe/Rome' default UTC
-        */
-        timeZone: 'UTC',
-        debug: true,
-        colors: true,
-    },
-    ngrok: {
-        /* 
-        Ngrok
-            1. Goto https://ngrok.com
-            2. Get started for free 
-            3. Copy YourNgrokAuthToken: https://dashboard.ngrok.com/get-started/your-authtoken
-        */
-        authToken: '',
-    },
-    sentry: {
-        /*
-        Sentry
-            1. Goto https://sentry.io/
-            2. Create account
-            3. On dashboard goto Settings/Projects/YourProjectName/Client Keys (DSN)
-        */
-        enabled: false,
-        DSN: '',
-        tracesSampleRate: 0.5,
-    },
-    slack: {
-        /*
-        Slack
-            1. Goto https://api.slack.com/apps/
-            2. Create your app
-            3. On Settings - Basic Information - App Credentials, chose your Signing Secret
-            4. Create a Slash Commands and put as Request URL: https://your.domain.name/slack
-        */
-        enabled: false,
-        signingSecret: '',
-    },
     aws: {
         accessKeyId: '',
         secretAccessKey: '',
-        region: '',
-        bucket: 'nombre-de-tu-bucket', // Reemplaza esto con el nombre real de tu bucket en S3
+        region: 'us-east-1',
+        bucket: '', 
     },
     ffmpeg: {
-        ffmpegPath: '/usr/bin/ffmpeg',
-        ffprobePath: '/usr/bin/ffprobe',
-    },
-    chatGPT: {
-        /*
-        ChatGPT
-            1. Goto https://platform.openai.com/
-            2. Create your account
-            3. Generate your APIKey https://platform.openai.com/account/api-keys
-        */
-        enabled: false,
-        basePath: 'https://api.openai.com/v1/',
-        apiKey: '',
-        model: 'gpt-3.5-turbo',
-        max_tokens: 1000,
-        temperature: 0,
-    },
-    IPLookup: {
-        /*
-        GeoJS
-            https://www.geojs.io/docs/v1/endpoints/geo/
-        */
-        enabled: false,
-        getEndpoint(ip) {
-            return `https://get.geojs.io/v1/ip/geo/${ip}.json`;
-        },
-    },
-    survey: {
-        /*
-        QuestionPro
-            1. GoTo https://www.questionpro.com/
-            2. Create your account
-            3. Create your custom survey
-        */
-        enabled: false,
-        url: '',
-    },
-    redirect: {
-        /*
-        Redirect URL on leave room
-            Upon leaving the room, users who either opt out of providing feedback or if the survey is disabled 
-            will be redirected to a specified URL. If enabled false the default '/newroom' URL will be used.
-        */
-        enabled: false,
-        url: '',
+        ffmpegPath: 'C:/docker/mirotalksfu/app/bin/ffmpeg/ffmpeg.exe',
+        ffprobePath: 'C:/docker/mirotalksfu/app/bin/ffmpeg/ffprobe.exe',
     },
     stats: {
         /*
             Umami: https://github.com/umami-software/umami
             We use our Self-hosted Umami to track aggregated usage statistics in order to improve our service.
         */
-        enabled: true,
-        src: 'https://stats.mirotalk.com/script.js',
+        enabled: false,
+        src: '',
         id: '41d26670-f275-45bb-af82-3ce91fe57756',
     },
     mediasoup: {
         // Worker settings
-        numWorkers: numWorkers,
+        numWorkers: require('os').cpus().length,
         worker: {
+            rtcMinPort: 40000,
+            rtcMaxPort: 40100,
             logLevel: 'error',
             logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp', 'rtx', 'bwe', 'score', 'simulcast', 'svc', 'sctp'],
         },
         // Router settings
         router: {
-            audioLevelObserverEnabled: true,
-            activeSpeakerObserverEnabled: false,
             mediaCodecs: [
                 {
                     kind: 'audio',
@@ -570,39 +468,15 @@ module.exports = {
         webRtcServerActive: false,
         webRtcServerOptions: {
             listenInfos: [
-                // { protocol: 'udp', ip: '0.0.0.0', announcedAddress: IPv4, port: 40000 },
-                // { protocol: 'tcp', ip: '0.0.0.0', announcedAddress: IPv4, port: 40000 },
-                {
-                    protocol: 'udp',
-                    ip: '0.0.0.0',
-                    announcedAddress: IPv4,
-                    portRange: { min: 40000, max: 40000 + numWorkers },
-                },
-                {
-                    protocol: 'tcp',
-                    ip: '0.0.0.0',
-                    announcedAddress: IPv4,
-                    portRange: { min: 40000, max: 40000 + numWorkers },
-                },
+                { protocol: 'udp', ip: '0.0.0.0', announcedAddress: IPv4, port: 44444 },
+                { protocol: 'tcp', ip: '0.0.0.0', announcedAddress: IPv4, port: 44444 },
             ],
         },
         // WebRtcTransportOptions
         webRtcTransport: {
             listenInfos: [
-                // { protocol: 'udp', ip: IPv4, portRange: { min: 40000, max: 40100 } },
-                // { protocol: 'tcp', ip: IPv4, portRange: { min: 40000, max: 40100 } },
-                {
-                    protocol: 'udp',
-                    ip: '0.0.0.0',
-                    announcedAddress: IPv4,
-                    portRange: { min: 40000, max: 40100 },
-                },
-                {
-                    protocol: 'tcp',
-                    ip: '0.0.0.0',
-                    announcedAddress: IPv4,
-                    portRange: { min: 40000, max: 40100 },
-                },
+                { protocol: 'udp', ip: '0.0.0.0', announcedAddress: IPv4 },
+                { protocol: 'tcp', ip: '0.0.0.0', announcedAddress: IPv4 },
             ],
             initialAvailableOutgoingBitrate: 1000000,
             minimumAvailableOutgoingBitrate: 600000,
