@@ -113,11 +113,6 @@ const corsOptions = {
 };
 
 const httpsServer = https.createServer(options, app);
-
-console.log('################### HTTPS SERVER ###################');
-console.log(httpsServer);
-console.log('####################################################');
-
 const io = require('socket.io')(httpsServer, {
     maxHttpBufferSize: 1e7,
     transports: ['polling', 'websocket'],
