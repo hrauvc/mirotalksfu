@@ -112,10 +112,12 @@ const corsOptions = {
     methods: config.server?.cors?.methods || ['GET', 'POST'],
 };
 
+console.log(corsOptions);
+
 const httpsServer = https.createServer(options, app);
 const io = require('socket.io')(httpsServer, {
     maxHttpBufferSize: 1e7,
-    transports: ['polling'],
+    transports: ['websocket', 'polling', 'flashsocket'],
     cors: corsOptions,
 });
 
@@ -1088,6 +1090,7 @@ function startServer() {
     // ####################################################
 
     io.on('connection', (socket) => {
+        console.log('New socket connection', socket.id);
         socket.on('clientError', (error) => {
             try {
                 log.error('Client error', error.message);
