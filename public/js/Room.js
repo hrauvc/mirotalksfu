@@ -2772,7 +2772,18 @@ function leaveFeedback() {
 }
 
 function redirectOnLeave() {
-    redirect && redirect.enabled ? openURL(redirect.url) : openURL('/newroom');
+    // Verificar si el redireccionamiento está habilitado
+    if (redirect && redirect.enabled) {
+        // Añadir peer_uuid a la URL
+        if (redirect.url.includes('?')) {
+            redirect.url += '&peer_uuid=' + getUUID();
+        } else {
+            redirect.url += '?peer_uuid=' + getUUID();
+        }
+        openURL(redirect.url);
+    } else {
+        openURL('/newroom');
+    }
 }
 
 function userLog(icon, message, position, timer = 3000) {

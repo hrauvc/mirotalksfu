@@ -42,7 +42,7 @@ module.exports = class Room {
             chat_cant_chatgpt: false,
         };
         this.survey = config.survey;
-        this.redirect = config.redirect;
+        this.redirect = this.getRedirect();
         this.videoAIEnabled = config?.videoAI?.enabled || false;
         this.peers = new Map();
         this.bannedPeers = [];
@@ -50,6 +50,26 @@ module.exports = class Room {
         this.router = null;
         this.routerSettings = config.mediasoup.router;
         this.createTheRouter();
+    }
+
+    // ####################################################
+    // REDIRECT
+    // ####################################################
+
+    getRedirect() {
+
+        let url = config.redirect.url;
+
+        // Añadir el query param de la sala, pero debe poder manejar si la url ya tiene parámetros de manera dinámica
+        if (url.includes('?')) {
+            url = url + '&room=' + this.id;
+        } else {
+            url = url + '?room=' + this.id;
+        }
+
+        config.redirect.url = url;
+
+        return config.redirect;
     }
 
     // ####################################################
@@ -68,7 +88,7 @@ module.exports = class Room {
             },
             moderator: this._moderator,
             survey: this.survey,
-            redirect: this.redirect + '/' + this.id,
+            redirect: this.redirect,
             videoAIEnabled: this.videoAIEnabled,
             peers: JSON.stringify([...this.peers]),
         };
