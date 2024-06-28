@@ -68,7 +68,7 @@ module.exports = class Room {
             },
             moderator: this._moderator,
             survey: this.survey,
-            redirect: this.redirect,
+            redirect: this.redirect + '/' + this.id,
             videoAIEnabled: this.videoAIEnabled,
             peers: JSON.stringify([...this.peers]),
         };
