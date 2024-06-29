@@ -449,6 +449,8 @@ function startServer() {
 
             log.debug('Direct Join', req.query);
 
+            console.log('Query ---', req.query);
+
             // http://localhost:3010/join?room=test&roomPassword=0&name=mirotalksfu&audio=1&video=1&screen=0&hide=0&notify=1
             // http://localhost:3010/join?room=test&roomPassword=0&name=mirotalksfu&audio=1&video=1&screen=0&hide=0&notify=0&token=token
 
