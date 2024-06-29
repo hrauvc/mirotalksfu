@@ -465,6 +465,8 @@ function startServer() {
                 try {
                     const validToken = await isValidToken(token);
 
+                    console.log('validToken', validToken);
+
                     if (!validToken) {
                         return res.status(401).json({ message: 'Invalid Token' });
                     }
