@@ -444,7 +444,6 @@ function startServer() {
 
     // Handle Direct join room with params
     app.get('/join/', async (req, res) => {
-        console.log('join point');
         if (Object.keys(req.query).length > 0) {
             //log.debug('/join/params - hostCfg ----->', hostCfg);
 
@@ -471,6 +470,8 @@ function startServer() {
                     }
 
                     const { username, password, presenter } = checkXSS(decodeToken(token));
+
+                    console.log('Debug username, password, presenter', { username, password, presenter });
 
                     peerUsername = username;
                     peerPassword = password;
