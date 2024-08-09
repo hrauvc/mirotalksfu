@@ -18,6 +18,9 @@ class Transcription {
                 ['en-ZA', 'South Africa'],
                 ['en-GB', 'United Kingdom'],
                 ['en-US', 'United States'],
+                ['en-NG', 'Nigeria'],
+                ['en-GH', 'Ghana'],
+                ['en-KE', 'Kenya'],
             ],
             [
                 'Español',
@@ -81,7 +84,7 @@ class Transcription {
         this.isBgTransparent = false;
         this.isPinned = false;
         this.isHidden = true;
-        this.isPersistentMode = false;
+        this.isPersistentMode = true; // Prevent stopping due to extended periods of silence
         this.isPersistent = false;
         this.showOnMessage = true;
     }
@@ -247,7 +250,7 @@ class Transcription {
     toggleBg() {
         this.isBgTransparent = !this.isBgTransparent;
         this.isBgTransparent
-            ? document.documentElement.style.setProperty('--transcription-bg', 'rgba(0, 0, 0, 0.100)')
+            ? document.documentElement.style.setProperty('--trx-bg', 'rgba(0, 0, 0, 0.100)')
             : setTheme();
     }
 
@@ -424,6 +427,5 @@ class Transcription {
     selectDisabled(disabled = false) {
         transcriptionLanguage.disabled = disabled;
         transcriptionDialect.disabled = disabled;
-        transcriptPersistentMode.disabled = disabled;
     }
 }

@@ -8,6 +8,7 @@
 ███████ ███████ ██   ██   ████   ███████ ██   ██                                           
 
 dependencies: {
+    @ffmpeg-installer/ffmpeg: https://www.npmjs.com/package/@ffmpeg-installer/ffmpeg
     @sentry/node            : https://www.npmjs.com/package/@sentry/node
     @sentry/integrations    : https://www.npmjs.com/package/@sentry/integrations
     axios                   : https://www.npmjs.com/package/axios
@@ -18,6 +19,7 @@ dependencies: {
     crypto-js               : https://www.npmjs.com/package/crypto-js
     express                 : https://www.npmjs.com/package/express
     express-openid-connect  : https://www.npmjs.com/package/express-openid-connect
+    fluent-ffmpeg           : https://www.npmjs.com/package/fluent-ffmpeg
     httpolyglot             : https://www.npmjs.com/package/httpolyglot
     jsonwebtoken            : https://www.npmjs.com/package/jsonwebtoken
     js-yaml                 : https://www.npmjs.com/package/js-yaml
@@ -42,7 +44,7 @@ dependencies: {
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.51
+ * @version 1.5.28
  *
  */
 
@@ -50,6 +52,7 @@ const express = require('express');
 const { auth, requiresAuth } = require('express-openid-connect');
 const cors = require('cors');
 const compression = require('compression');
+const socketIo = require('socket.io');
 const https = require('httpolyglot');
 const mediasoup = require('mediasoup');
 const mediasoupClient = require('mediasoup-client');
@@ -74,6 +77,17 @@ const Sentry = require('@sentry/node');
 const { CaptureConsole } = require('@sentry/integrations');
 const restrictAccessByIP = require('./middleware/IpWhitelist.js');
 const packageJson = require('../../package.json');
+
+// Incoming Stream to RTPM
+const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto-js');
+const RtmpStreamer = require('./RtmpStreamer.js'); // Import the RtmpStreamer class
+const rtmpCfg = config.server.rtmp;
+const rtmpDir = rtmpCfg && rtmpCfg.dir ? rtmpCfg.dir : 'rtmp';
+
+// File and Url Rtmp streams count
+let rtmpFileStreamsCount = 0;
+let rtmpUrlStreamsCount = 0;
 
 // Email alerts and notifications
 const nodemailer = require('./lib/nodemailer');
@@ -115,7 +129,7 @@ const corsOptions = {
 console.log(corsOptions);
 
 const httpsServer = https.createServer(options, app);
-const io = require('socket.io')(httpsServer, {
+const io = socketIo(httpsServer, {
     maxHttpBufferSize: 1e7,
     transports: ['websocket', 'polling', 'flashsocket'],
     cors: corsOptions,
@@ -186,7 +200,7 @@ if (config.chatGPT.enabled) {
         };
         chatGPT = new OpenAI(configuration);
     } else {
-        log.warning('ChatGPT seems enabled, but you missing the apiKey!');
+        log.warn('ChatGPT seems enabled, but you missing the apiKey!');
     }
 }
 
@@ -217,13 +231,16 @@ const views = {
     permission: path.join(__dirname, '../../', 'public/views/permission.html'),
     privacy: path.join(__dirname, '../../', 'public/views/privacy.html'),
     room: path.join(__dirname, '../../', 'public/views/Room.html'),
+    rtmpStreamer: path.join(__dirname, '../../', 'public/views/RtmpStreamer.html'),
 };
 
 const authHost = new Host(); // Authenticated IP by Login
 
 const roomList = new Map(); // All Rooms
 
-const presenters = {}; // collect presenters grp by roomId
+const presenters = {}; // Collect presenters grp by roomId
+
+const streams = {}; // Collect all rtmp streams
 
 const webRtcServerActive = config.mediasoup.webRtcServerActive;
 
@@ -305,24 +322,28 @@ function startServer() {
     // Start the app
     app.use(cors(corsOptions));
     app.use(compression());
-    app.use(express.json());
+    app.use(express.json({ limit: '50mb' })); // Ensure the body parser can handle large files
     app.use(express.static(dir.public));
     app.use(bodyParser.urlencoded({ extended: true }));
+    app.use(bodyParser.raw({ type: 'video/webm', limit: '50mb' })); // handle raw binary data
+    app.use(bodyParser.raw({ type: 'application/octet-stream', limit: '50mb' })); // handle raw binary data
     app.use(restApi.basePath + '/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument)); // api docs
 
     // IP Whitelist check ...
     app.use(restrictAccessByIP);
 
     // Logs requests
+    /*
     app.use((req, res, next) => {
         log.debug('New request:', {
-            // headers: req.headers,
+            headers: req.headers,
             body: req.body,
             method: req.method,
             path: req.originalUrl,
         });
         next();
     });
+    */
 
     // POST start from here...
     app.post('*', function (next) {
@@ -424,6 +445,14 @@ function startServer() {
         }
     });
 
+    // Route to display rtmp streamer
+    app.get('/rtmp', OIDCAuth, (req, res) => {
+        if (!rtmpCfg || !rtmpCfg.fromStream) {
+            return res.json({ message: 'The RTMP Streamer is currently disabled.' });
+        }
+        return res.sendFile(views.rtmpStreamer);
+    });
+
     // set new room name and join
     app.get(['/newroom'], OIDCAuth, (req, res) => {
         //log.info('/newroom - hostCfg ----->', hostCfg);
@@ -478,7 +507,7 @@ function startServer() {
                     isPeerValid = await isAuthPeer(username, password);
                     isPeerPresenter = presenter === '1' || presenter === 'true';
 
-                    if (isPeerPresenter) {
+                    if (isPeerPresenter && !hostCfg.users_from_db) {
                         const roomAllowedForUser = isRoomAllowedForUser('Direct Join with token', username, room);
                         if (!roomAllowedForUser) {
                             return res.status(401).json({ message: 'Direct Room Join for this User is Unauthorized' });
@@ -672,6 +701,128 @@ function startServer() {
                 res.status(500).send('Internal Server Error');
             }
         }
+    });
+
+    // ###############################################################
+    // INCOMING STREAM (getUserMedia || getDisplayMedia) TO RTMP
+    // ###############################################################
+
+    function checkRTMPApiSecret(req, res, next) {
+        const expectedApiSecret = rtmpCfg && rtmpCfg.apiSecret;
+        const apiSecret = req.headers.authorization;
+
+        if (!apiSecret || apiSecret !== expectedApiSecret) {
+            log.warn('RTMP apiSecret Unauthorized', {
+                apiSecret: apiSecret,
+                expectedApiSecret: expectedApiSecret,
+            });
+            return res.status(401).send('Unauthorized');
+        }
+        next();
+    }
+
+    function checkMaxStreams(req, res, next) {
+        const maxStreams = (rtmpCfg && rtmpCfg.maxStreams) || 1; // Set your maximum allowed streams here
+        const activeStreams = Object.keys(streams).length;
+        if (activeStreams >= maxStreams) {
+            log.warn('Maximum number of streams reached', activeStreams);
+            return res.status(429).send('Maximum number of streams reached, please try later!');
+        }
+        next();
+    }
+
+    app.get('/activeStreams', checkRTMPApiSecret, (req, res) => {
+        const activeStreams = Object.keys(streams).length;
+        log.info('Active Streams', activeStreams);
+        res.json(activeStreams);
+    });
+
+    app.get('/rtmpEnabled', (req, res) => {
+        const rtmpEnabled = rtmpCfg && rtmpCfg.enabled;
+        log.debug('RTMP enabled', rtmpEnabled);
+        res.json({ enabled: rtmpEnabled });
+    });
+
+    app.post('/initRTMP', checkRTMPApiSecret, checkMaxStreams, async (req, res) => {
+        if (!rtmpCfg || !rtmpCfg.enabled) {
+            return res.status(400).send('RTMP server is not enabled or missing the config');
+        }
+
+        const domainName = config.ngrok.enabled ? 'localhost' : req.headers.host.split(':')[0];
+
+        const rtmpServer = rtmpCfg.server != '' ? rtmpCfg.server : false;
+        const rtmpServerAppName = rtmpCfg.appName != '' ? rtmpCfg.appName : 'live';
+        const rtmpStreamKey = rtmpCfg.streamKey != '' ? rtmpCfg.streamKey : uuidv4();
+        const rtmpServerSecret = rtmpCfg.secret != '' ? rtmpCfg.secret : false;
+        const expirationHours = rtmpCfg.expirationHours || 4;
+        const rtmpServerURL = rtmpServer ? rtmpServer : `rtmp://${domainName}:1935`;
+        const rtmpServerPath = '/' + rtmpServerAppName + '/' + rtmpStreamKey;
+
+        const rtmp = rtmpServerSecret
+            ? generateRTMPUrl(rtmpServerURL, rtmpServerPath, rtmpServerSecret, expirationHours)
+            : rtmpServerURL + rtmpServerPath;
+
+        log.info('initRTMP', {
+            headers: req.headers,
+            rtmpServer,
+            rtmpServerSecret,
+            rtmpServerURL,
+            rtmpServerPath,
+            expirationHours,
+            rtmpStreamKey,
+            rtmp,
+        });
+
+        const stream = new RtmpStreamer(rtmp, rtmpStreamKey);
+        streams[rtmpStreamKey] = stream;
+
+        log.info('Active RTMP Streams', Object.keys(streams).length);
+
+        return res.json({ rtmp });
+    });
+
+    app.post('/streamRTMP', checkRTMPApiSecret, (req, res) => {
+        if (!rtmpCfg || !rtmpCfg.enabled) {
+            return res.status(400).send('RTMP server is not enabled');
+        }
+        if (!req.body || req.body.length === 0) {
+            return res.status(400).send('Invalid video data');
+        }
+
+        const rtmpStreamKey = req.query.key;
+        const stream = streams[rtmpStreamKey];
+
+        if (!stream || !stream.isRunning()) {
+            delete streams[rtmpStreamKey];
+            log.debug('Stream not found', { rtmpStreamKey, streams: Object.keys(streams).length });
+            return res.status(404).send('FFmpeg Stream not found');
+        }
+
+        log.debug('Received video data', {
+            // data: req.body.slice(0, 20).toString('hex'),
+            key: rtmpStreamKey,
+            size: bytesToSize(req.headers['content-length']),
+        });
+
+        stream.write(Buffer.from(req.body));
+        res.sendStatus(200);
+    });
+
+    app.post('/stopRTMP', checkRTMPApiSecret, (req, res) => {
+        if (!rtmpCfg || !rtmpCfg.enabled) {
+            return res.status(400).send('RTMP server is not enabled');
+        }
+
+        const rtmpStreamKey = req.query.key;
+        const stream = streams[rtmpStreamKey];
+
+        if (stream) {
+            stream.end();
+            delete streams[rtmpStreamKey];
+            log.debug('Active RTMP Streams', Object.keys(streams).length);
+        }
+
+        res.sendStatus(200);
     });
 
     // ####################################################
@@ -1193,9 +1344,11 @@ function startServer() {
                     return cb('unauthorized');
                 }
 
-                const roomAllowedForUser = isRoomAllowedForUser('[Join]', peer_name, room.id);
-                if (!roomAllowedForUser) {
-                    return cb('notAllowed');
+                if (!hostCfg.users_from_db) {
+                    const roomAllowedForUser = isRoomAllowedForUser('[Join]', peer_name, room.id);
+                    if (!roomAllowedForUser) {
+                        return cb('notAllowed');
+                    }
                 }
             }
 
@@ -1220,6 +1373,10 @@ function startServer() {
             const activeRooms = getActiveRooms();
 
             log.info('[Join] - current active rooms', activeRooms);
+
+            const activeStreams = getRTMPActiveStreams();
+
+            log.info('[Join] - current active RTMP streams', activeStreams);
 
             if (!(socket.room_id in presenters)) presenters[socket.room_id] = {};
 
@@ -1273,7 +1430,7 @@ function startServer() {
                 return cb('isLobby');
             }
 
-            if ((hostCfg.protected || hostCfg.user_auth) && isPresenter) {
+            if ((hostCfg.protected || hostCfg.user_auth) && isPresenter && !hostCfg.users_from_db) {
                 const roomAllowedForUser = isRoomAllowedForUser('[Join]', peer_name, room.id);
                 if (!roomAllowedForUser) {
                     return cb('notAllowed');
@@ -1793,6 +1950,8 @@ function startServer() {
 
             const peer = room.getPeer(socket.id);
 
+            if (!peer) return;
+
             peer.updatePeerInfo(data);
 
             if (data.broadcast) {
@@ -1888,6 +2047,14 @@ function startServer() {
             const data = checkXSS(dataObject);
 
             roomList.get(socket.room_id).broadCast(socket.id, 'fileAbort', data);
+        });
+
+        socket.on('receiveFileAbort', (dataObject) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const data = checkXSS(dataObject);
+
+            roomList.get(socket.room_id).broadCast(socket.id, 'receiveFileAbort', data);
         });
 
         socket.on('shareVideoAction', (dataObject) => {
@@ -2064,7 +2231,8 @@ function startServer() {
 
                 cb(data);
             } catch (error) {
-                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.message });
+                log.error('getAvatarList', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
             }
         });
 
@@ -2085,7 +2253,8 @@ function startServer() {
 
                 cb(data);
             } catch (error) {
-                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.message });
+                log.error('getVoiceList', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
             }
         });
 
@@ -2111,13 +2280,16 @@ function startServer() {
                     },
                 );
 
+                log.warn('STREAMING NEW', response);
+
                 const data = { response: response.data };
 
                 log.debug('streamingNew', data);
 
                 cb(data);
             } catch (error) {
-                cb({ error: error.response?.status === 500 ? 'Internal server error' : error });
+                log.error('streamingNew', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
             }
         });
 
@@ -2144,7 +2316,8 @@ function startServer() {
 
                 cb(data);
             } catch (error) {
-                cb({ error: error.response?.status === 500 ? 'server error' : error });
+                log.error('streamingStart', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
             }
         });
 
@@ -2171,8 +2344,8 @@ function startServer() {
 
                 cb(data);
             } catch (error) {
-                log.error('Error in streamingICE:', error.response?.data || error.message); // Log detailed error
-                cb({ error: error.response?.status === 500 ? 'Internal server error' : error });
+                log.error('streamingICE', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
             }
         });
 
@@ -2201,7 +2374,8 @@ function startServer() {
 
                 cb(data);
             } catch (error) {
-                cb({ error: error.response?.status === 500 ? 'server error' : error });
+                log.error('streamingTask', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
             }
         });
 
@@ -2226,7 +2400,8 @@ function startServer() {
 
                 cb(data);
             } catch (error) {
-                cb({ error: error.message });
+                log.error('talkToOpenAI', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
             }
         });
 
@@ -2254,7 +2429,187 @@ function startServer() {
 
                 cb(data);
             } catch (error) {
-                cb({ error: error.response?.status === 500 ? 'Internal server error' : error });
+                log.error('streamingStop', error.response.data);
+                cb({ error: error.response?.status === 500 ? 'Internal server error' : error.response.data.message });
+            }
+        });
+
+        socket.on('getRTMP', async ({}, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+            const room = roomList.get(socket.room_id);
+            const rtmpFiles = await room.getRTMP(rtmpDir);
+            cb(rtmpFiles);
+        });
+
+        socket.on('startRTMP', async (dataObject, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            if (rtmpCfg && rtmpFileStreamsCount >= rtmpCfg.maxStreams) {
+                log.warn('RTMP max file streams reached', rtmpFileStreamsCount);
+                return cb(false);
+            }
+
+            const data = checkXSS(dataObject);
+            const { peer_name, peer_uuid, file } = data;
+            const isPresenter = await isPeerPresenter(socket.room_id, socket.id, peer_name, peer_uuid);
+            if (!isPresenter) return cb(false);
+
+            const room = roomList.get(socket.room_id);
+            const host = config.ngrok.enabled ? 'localhost' : socket.handshake.headers.host.split(':')[0];
+            const rtmp = await room.startRTMP(socket.id, room, host, 1935, `../${rtmpDir}/${file}`);
+
+            if (rtmp !== false) rtmpFileStreamsCount++;
+            log.debug('startRTMP - rtmpFileStreamsCount ---->', rtmpFileStreamsCount);
+
+            cb(rtmp);
+        });
+
+        socket.on('stopRTMP', async () => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const room = roomList.get(socket.room_id);
+
+            rtmpFileStreamsCount--;
+            log.debug('stopRTMP - rtmpFileStreamsCount ---->', rtmpFileStreamsCount);
+
+            await room.stopRTMP();
+        });
+
+        socket.on('endOrErrorRTMP', async () => {
+            if (!roomList.has(socket.room_id)) return;
+            rtmpFileStreamsCount--;
+            log.debug('endRTMP - rtmpFileStreamsCount ---->', rtmpFileStreamsCount);
+        });
+
+        socket.on('startRTMPfromURL', async (dataObject, cb) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            if (rtmpCfg && rtmpUrlStreamsCount >= rtmpCfg.maxStreams) {
+                log.warn('RTMP max Url streams reached', rtmpUrlStreamsCount);
+                return cb(false);
+            }
+
+            const data = checkXSS(dataObject);
+            const { peer_name, peer_uuid, inputVideoURL } = data;
+            const isPresenter = await isPeerPresenter(socket.room_id, socket.id, peer_name, peer_uuid);
+            if (!isPresenter) return cb(false);
+
+            const room = roomList.get(socket.room_id);
+            const host = config.ngrok.enabled ? 'localhost' : socket.handshake.headers.host.split(':')[0];
+            const rtmp = await room.startRTMPfromURL(socket.id, room, host, 1935, inputVideoURL);
+
+            if (rtmp !== false) rtmpUrlStreamsCount++;
+            log.debug('startRTMPfromURL - rtmpUrlStreamsCount ---->', rtmpUrlStreamsCount);
+
+            cb(rtmp);
+        });
+
+        socket.on('stopRTMPfromURL', async () => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const room = roomList.get(socket.room_id);
+
+            rtmpUrlStreamsCount--;
+            log.debug('stopRTMPfromURL - rtmpUrlStreamsCount ---->', rtmpUrlStreamsCount);
+
+            await room.stopRTMPfromURL();
+        });
+
+        socket.on('endOrErrorRTMPfromURL', async () => {
+            if (!roomList.has(socket.room_id)) return;
+            rtmpUrlStreamsCount--;
+            log.debug('endRTMPfromURL - rtmpUrlStreamsCount ---->', rtmpUrlStreamsCount);
+        });
+
+        socket.on('createPoll', (dataObject) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const data = checkXSS(dataObject);
+
+            const { question, options } = data;
+
+            const room = roomList.get(socket.room_id);
+
+            const newPoll = {
+                question: question,
+                options: options,
+                voters: new Map(),
+            };
+
+            const roomPolls = room.getPolls();
+
+            roomPolls.push(newPoll);
+            room.sendToAll('updatePolls', room.convertPolls(roomPolls));
+            log.debug('[Poll] createPoll', roomPolls);
+        });
+
+        socket.on('vote', (dataObject) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const data = checkXSS(dataObject);
+
+            const room = roomList.get(socket.room_id);
+
+            const roomPolls = room.getPolls();
+
+            const poll = roomPolls[data.pollIndex];
+            if (poll) {
+                const peer_name = getPeerName(room, false) || socket.id;
+                poll.voters.set(peer_name, data.option);
+                room.sendToAll('updatePolls', room.convertPolls(roomPolls));
+                log.debug('[Poll] vote', roomPolls);
+            }
+        });
+
+        socket.on('updatePoll', () => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const room = roomList.get(socket.room_id);
+
+            const roomPolls = room.getPolls();
+
+            if (roomPolls.length > 0) {
+                room.sendToAll('updatePolls', room.convertPolls(roomPolls));
+                log.debug('[Poll] updatePoll', roomPolls);
+            }
+        });
+
+        socket.on('editPoll', (dataObject) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const data = checkXSS(dataObject);
+
+            const { index, question, options } = data;
+
+            const room = roomList.get(socket.room_id);
+
+            const roomPolls = room.getPolls();
+
+            if (roomPolls[index]) {
+                roomPolls[index].question = question;
+                roomPolls[index].options = options;
+                room.sendToAll('updatePolls', roomPolls);
+                log.debug('[Poll] editPoll', roomPolls);
+            }
+        });
+
+        socket.on('deletePoll', async (data) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const { index, peer_name, peer_uuid } = checkXSS(data);
+
+            // Disable for now...
+            // const isPresenter = await isPeerPresenter(socket.room_id, socket.id, peer_name, peer_uuid);
+            // if (!isPresenter) return;
+
+            const room = roomList.get(socket.room_id);
+
+            const roomPolls = room.getPolls();
+
+            if (roomPolls[index]) {
+                roomPolls.splice(index, 1);
+                room.sendToAll('updatePolls', roomPolls);
+                log.debug('[Poll] deletePoll', roomPolls);
             }
         });
 
@@ -2275,6 +2630,8 @@ function startServer() {
 
             if (room.getPeers().size === 0) {
                 //
+                stopRTMPActiveStreams(isPresenter, room);
+
                 roomList.delete(socket.room_id);
 
                 delete presenters[socket.room_id];
@@ -2284,6 +2641,10 @@ function startServer() {
                 const activeRooms = getActiveRooms();
 
                 log.info('[Disconnect] - Last peer - current active rooms', activeRooms);
+
+                const activeStreams = getRTMPActiveStreams();
+
+                log.info('[Disconnect] - Last peer - current active RTMP streams', activeStreams);
             }
 
             room.broadCast(socket.id, 'removeMe', removeMeData(room, peer_name, isPresenter));
@@ -2316,6 +2677,8 @@ function startServer() {
 
             if (room.getPeers().size === 0) {
                 //
+                stopRTMPActiveStreams(isPresenter, room);
+
                 roomList.delete(socket.room_id);
 
                 delete presenters[socket.room_id];
@@ -2325,6 +2688,10 @@ function startServer() {
                 const activeRooms = getActiveRooms();
 
                 log.info('[REMOVE ME] - Last peer - current active rooms', activeRooms);
+
+                const activeStreams = getRTMPActiveStreams();
+
+                log.info('[REMOVE ME] - Last peer - current active RTMP streams', activeStreams);
             }
 
             socket.room_id = null;
@@ -2356,6 +2723,8 @@ function startServer() {
             const room = roomList.get(roomId);
 
             const peer = room.getPeer(id);
+
+            if (!peer) return false;
 
             const { peer_name } = peer;
 
@@ -2393,14 +2762,53 @@ function startServer() {
             log.debug('[REMOVE ME DATA]', data);
             return data;
         }
-
-        function bytesToSize(bytes) {
-            let sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-            if (bytes == 0) return '0 Byte';
-            let i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
-            return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
-        }
     });
+
+    function generateRTMPUrl(baseURL, streamPath, secretKey, expirationHours = 4) {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const expirationTime = currentTime + expirationHours * 3600;
+        const hashValue = crypto.MD5(`${streamPath}-${expirationTime}-${secretKey}`).toString();
+        const rtmpUrl = `${baseURL}${streamPath}?sign=${expirationTime}-${hashValue}`;
+
+        log.debug('generateRTMPUrl', {
+            currentTime,
+            expirationTime,
+            hashValue,
+            rtmpUrl,
+        });
+
+        return rtmpUrl;
+    }
+
+    function getRTMPActiveStreams() {
+        return {
+            rtmpStreams: Object.keys(streams).length,
+            rtmpFileStreamsCount,
+            rtmpUrlStreamsCount,
+        };
+    }
+
+    function stopRTMPActiveStreams(isPresenter, room) {
+        if (isPresenter) {
+            if (room.isRtmpFileStreamerActive()) {
+                room.stopRTMP();
+                rtmpFileStreamsCount--;
+                log.info('[REMOVE ME] - Stop RTMP Stream From FIle', rtmpFileStreamsCount);
+            }
+            if (room.isRtmpUrlStreamerActive()) {
+                room.stopRTMPfromURL();
+                rtmpUrlStreamsCount--;
+                log.info('[REMOVE ME] - Stop RTMP Stream From URL', rtmpUrlStreamsCount);
+            }
+        }
+    }
+
+    function bytesToSize(bytes) {
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        if (bytes == 0) return '0 Byte';
+        const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+        return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+    }
 
     function clone(value) {
         if (value === undefined) return undefined;
@@ -2578,6 +2986,8 @@ function startServer() {
     function isRoomAllowedForUser(message, username, room) {
         log.debug('isRoomAllowedForUser ------>', { message, username, room });
 
+        const isOIDCEnabled = config.oidc && config.oidc.enabled;
+
         if (hostCfg.protected || hostCfg.user_auth) {
             const isInPresenterLists = config.presenters.list.includes(username);
 
@@ -2588,12 +2998,17 @@ function startServer() {
 
             const user = hostCfg.users.find((user) => user.username === username);
 
-            if (!user) {
+            if (!isOIDCEnabled && !user) {
                 log.debug('isRoomAllowedForUser - user not found', username);
                 return false;
             }
 
-            if (!user.allowed_rooms || user.allowed_rooms.includes('*') || user.allowed_rooms.includes(room)) {
+            if (
+                isOIDCEnabled ||
+                !user.allowed_rooms ||
+                user.allowed_rooms.includes('*') ||
+                user.allowed_rooms.includes(room)
+            ) {
                 log.debug('isRoomAllowedForUser - user room allowed', room);
                 return true;
             }

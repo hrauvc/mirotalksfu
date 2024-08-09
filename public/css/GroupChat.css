@@ -139,7 +139,7 @@
 }
 
 .all-participants-img:hover {
-    background-color: lime;
+    background-color: #86c541;
     transition: all 0.3s ease-in-out;
 }
 
@@ -277,6 +277,11 @@
     position: absolute;
     left: 5px;
     bottom: 135px;
+    border: var(--border);
+    border-radius: 5px;
+    --rgb-background: var(--body-bg);
+    --color-border-over: var(--body-bg);
+    --font-family: 'Comfortaa';
 }
 
 /* status */
@@ -366,4 +371,17 @@ input[type='text'] {
 
 .text-start pre {
     text-wrap: pretty !important;
+}
+
+#chatShareRoomBtn {
+    padding: 8px 16px;
+    background: var(--body-bg);
+    border-radius: 5px;
+    border: var(--border);
+    transition: all 0.3s ease-in-out;
+}
+
+#chatShareRoomBtn:hover {
+    background: var(--select-bg);
+    transform: translateY(-3px);
 }

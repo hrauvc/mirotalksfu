@@ -9,7 +9,7 @@
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.51
+ * @version 1.5.28
  *
  */
 
@@ -99,6 +99,7 @@ const image = {
     broadcasting: '../images/broadcasting.png',
     geolocation: '../images/geolocation.png',
     network: '../images/network.gif',
+    rtmp: '../images/rtmp.png',
 };
 
 const mediaType = {
@@ -137,6 +138,12 @@ const _EVENTS = {
     roomUnlock: 'roomUnlock',
     hostOnlyRecordingOn: 'hostOnlyRecordingOn',
     hostOnlyRecordingOff: 'hostOnlyRecordingOff',
+    startRTMP: 'startRTMP',
+    stopRTMP: 'stopRTMP',
+    endRTMP: 'endRTMP',
+    startRTMPfromURL: 'startRTMPfromURL',
+    stopRTMPfromURL: 'stopRTMPfromURL',
+    endRTMPfromURL: 'endRTMPfromURL',
 };
 
 // Enums
@@ -198,8 +205,12 @@ class RoomClient {
         this.peer_uuid = peer_uuid;
         this.peer_info = peer_info;
 
+        // RTMP selected file name
+        this.selectedRtmpFilename = '';
+
         // Moderator
         this._moderator = {
+            video_start_privacy: false,
             audio_start_muted: false,
             video_start_hidden: false,
             audio_cant_unmute: false,
@@ -246,6 +257,8 @@ class RoomClient {
         this.isZoomCenterMode = false;
         this.isChatOpen = false;
         this.isChatEmojiOpen = false;
+        this.isPollOpen = false;
+        this.isPollPinned = false;
         this.isSpeechSynthesisSupported = isSpeechSynthesisSupported;
         this.speechInMessages = false;
         this.showChatOnMessage = true;
@@ -260,6 +273,7 @@ class RoomClient {
         this.camera = 'user';
         this.videoQualitySelectedIndex = 0;
 
+        this.pollSelectedOptions = {};
         this.chatGPTContext = [];
         this.chatMessages = [];
         this.leftMsgAvatar = null;
@@ -272,6 +286,10 @@ class RoomClient {
         this.RoomPassword = false;
 
         this.transcription = transcription;
+
+        // RTMP Streamer
+        this.rtmpFileStreamer = false;
+        this.rtmpUrltSreamer = false;
 
         // File transfer settings
         this.fileToSend = null;
@@ -489,6 +507,7 @@ class RoomClient {
             if (room.moderator && (!isRulesActive || !isPresenter)) {
                 console.log('07.2 ----> ROOM MODERATOR', room.moderator);
                 const {
+                    video_start_privacy,
                     audio_start_muted,
                     video_start_hidden,
                     audio_cant_unmute,
@@ -498,6 +517,7 @@ class RoomClient {
                     chat_cant_chatgpt,
                 } = room.moderator;
 
+                this._moderator.video_start_privacy = video_start_privacy;
                 this._moderator.audio_start_muted = audio_start_muted;
                 this._moderator.video_start_hidden = video_start_hidden;
                 this._moderator.audio_cant_unmute = audio_cant_unmute;
@@ -505,7 +525,18 @@ class RoomClient {
                 this._moderator.screen_cant_share = screen_cant_share;
                 this._moderator.chat_cant_privately = chat_cant_privately;
                 this._moderator.chat_cant_chatgpt = chat_cant_chatgpt;
+
                 //
+                if (this._moderator.video_start_privacy || localStorageSettings.moderator_video_start_privacy) {
+                    this.peer_info.peer_video_privacy = true;
+                    this.emitCmd({
+                        type: 'privacy',
+                        peer_id: this.peer_id,
+                        active: true,
+                        broadcast: true,
+                    });
+                    this.userLog('warning', 'The Moderator starts video in privacy mode', 'top-end');
+                }
                 if (this._moderator.audio_start_muted && this._moderator.video_start_hidden) {
                     this.userLog('warning', 'The Moderator disabled your audio and video', 'top-end');
                 } else {
@@ -524,6 +555,22 @@ class RoomClient {
             if (!room.videoAIEnabled) {
                 VideoAI.enabled = false;
                 elemDisplay('tabVideoAIBtn', false);
+            }
+            // Check che RTMP config
+            if (room.rtmp) {
+                console.log('RTMP config', room.rtmp);
+                const { enabled, fromFile, fromUrl, fromStream } = room.rtmp;
+                elemDisplay('tabRTMPStreamingBtn', enabled);
+                elemDisplay('rtmpFromFile', fromFile);
+                elemDisplay('rtmpFromUrl', fromUrl);
+                elemDisplay('rtmpFromStream', fromStream);
+                if (!fromFile && !fromUrl && !fromStream) {
+                    elemDisplay('tabRTMPStreamingBtn', false);
+                }
+            }
+            // There is polls
+            if (room.thereIsPolls) {
+                this.socket.emit('updatePoll');
             }
         }
 
@@ -829,6 +876,7 @@ class RoomClient {
         this.socket.on('file', this.handleFileData);
         this.socket.on('shareVideoAction', this.handleShareVideoAction);
         this.socket.on('fileAbort', this.handleFileAbortData);
+        this.socket.on('receiveFileAbort', this.handleReceiveFileAbortData);
         this.socket.on('wbCanvasToJson', this.handleWbCanvasToJson);
         this.socket.on('whiteboardAction', this.handleWhiteboardAction);
         this.socket.on('audioVolume', this.handleAudioVolumeData);
@@ -838,6 +886,11 @@ class RoomClient {
         this.socket.on('recordingAction', this.handleRecordingActionData);
         this.socket.on('connect', this.handleSocketConnect);
         this.socket.on('disconnect', this.handleSocketDisconnect);
+        this.socket.on('endRTMP', this.handleEndRTMP);
+        this.socket.on('errorRTMP', this.handleErrorRTMP);
+        this.socket.on('endRTMPfromURL', this.handleEndRTMPfromURL);
+        this.socket.on('errorRTMPfromURL', this.handleErrorRTMPfromURL);
+        this.socket.on('updatePolls', this.handleUpdatePolls);
     }
 
     // ####################################################
@@ -943,6 +996,10 @@ class RoomClient {
         this.handleFileAbort(data);
     };
 
+    handleReceiveFileAbortData = (data) => {
+        this.handleReceiveFileAbort(data);
+    };
+
     handleWbCanvasToJson = (data) => {
         console.log('SocketOn Received whiteboard canvas JSON');
         JsonToWbCanvas(data);
@@ -986,6 +1043,26 @@ class RoomClient {
         this.exit(true);
         this.ServerAway();
         this.saveRecording('Socket disconnected');
+    };
+
+    handleEndRTMP = (data) => {
+        this.endRTMP(data);
+    };
+
+    handleErrorRTMP = (data) => {
+        this.errorRTMP(data);
+    };
+
+    handleEndRTMPfromURL = (data) => {
+        this.endRTMPfromURL(data);
+    };
+
+    handleErrorRTMPfromURL = (data) => {
+        this.errorRTMPfromURL(data);
+    };
+
+    handleUpdatePolls = (data) => {
+        this.pollsUpdate(data);
     };
 
     // ####################################################
@@ -1560,8 +1637,8 @@ class RoomClient {
         return {
             audio: true,
             video: {
-                width: { max: 1920 },
-                height: { max: 1080 },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
                 frameRate: frameRate,
             },
         };
@@ -1718,20 +1795,20 @@ class RoomClient {
     // ####################################################
 
     handleHideMe() {
-        //const myScreenWrap = this.getId(this.screenProducerId + '__video');
+        const myScreenWrap = this.getId(this.screenProducerId + '__video');
         const myVideoWrap = this.getId(this.videoProducerId + '__video');
         const myVideoWrapOff = this.getId(this.peer_id + '__videoOff');
         const myVideoPinBtn = this.getId(this.videoProducerId + '__pin');
         const myScreenPinBtn = this.getId(this.screenProducerId + '__pin');
         console.log('handleHideMe', {
             isHideMeActive: isHideMeActive,
-            //myScreenWrap: myScreenWrap ? myScreenWrap.id : null,
+            myScreenWrap: myScreenWrap ? myScreenWrap.id : null,
             myVideoWrap: myVideoWrap ? myVideoWrap.id : null,
             myVideoWrapOff: myVideoWrapOff ? myVideoWrapOff.id : null,
             myVideoPinBtn: myVideoPinBtn ? myVideoPinBtn.id : null,
             myScreenPinBtn: myScreenPinBtn ? myScreenPinBtn.id : null,
         });
-        //if (myScreenWrap) myScreenWrap.style.display = isHideMeActive ? 'none' : 'block';
+        if (myScreenWrap) myScreenWrap.style.display = isHideMeActive ? 'none' : 'block';
         if (isHideMeActive && this.isVideoPinned && myVideoPinBtn) myVideoPinBtn.click();
         if (isHideMeActive && this.isVideoPinned && myScreenPinBtn) myScreenPinBtn.click();
         if (myVideoWrap) myVideoWrap.style.display = isHideMeActive ? 'none' : 'block';
@@ -1790,7 +1867,7 @@ class RoomClient {
                 pn.id = id + '__pin';
                 pn.className = html.pin;
                 vp = document.createElement('button');
-                vp.id = this.peer_id + +'__vp';
+                vp.id = this.peer_id + '__vp';
                 vp.className = html.videoPrivacy;
                 au = document.createElement('button');
                 au.id = this.peer_id + '__audio';
@@ -1825,7 +1902,7 @@ class RoomClient {
                 d.appendChild(p);
                 d.appendChild(vb);
                 this.videoMediaContainer.appendChild(d);
-                this.attachMediaStream(elem, stream, type, 'Producer');
+                await this.attachMediaStream(elem, stream, type, 'Producer');
                 this.myVideoEl = elem;
                 this.isVideoPictureInPictureSupported && this.handlePIP(elem.id, pip.id);
                 this.isVideoFullScreenSupported && this.handleFS(elem.id, fs.id);
@@ -1856,7 +1933,7 @@ class RoomClient {
                 elem.volume = 0;
                 this.myAudioEl = elem;
                 this.localAudioEl.appendChild(elem);
-                this.attachMediaStream(elem, stream, type, 'Producer');
+                await this.attachMediaStream(elem, stream, type, 'Producer');
                 console.log('[addProducer] audio-element-count', this.localAudioEl.childElementCount);
                 break;
             default:
@@ -2131,7 +2208,7 @@ class RoomClient {
         };
     }
 
-    handleConsumer(id, type, stream, peer_name, peer_info) {
+    async handleConsumer(id, type, stream, peer_name, peer_info) {
         let elem, vb, d, p, i, cm, au, pip, fs, ts, sf, sm, sv, gl, ban, ko, pb, pm, pv, pn;
 
         let eDiv, eBtn, eVc; // expand buttons
@@ -2255,7 +2332,7 @@ class RoomClient {
                 d.appendChild(pm);
                 d.appendChild(vb);
                 this.videoMediaContainer.appendChild(d);
-                this.attachMediaStream(elem, stream, type, 'Consumer');
+                await this.attachMediaStream(elem, stream, type, 'Consumer');
                 this.isVideoPictureInPictureSupported && this.handlePIP(elem.id, pip.id);
                 this.isVideoFullScreenSupported && this.handleFS(elem.id, fs.id);
                 this.handleDD(elem.id, remotePeerId);
@@ -2300,7 +2377,7 @@ class RoomClient {
                 elem.autoplay = true;
                 elem.audio = 1.0;
                 this.remoteAudioEl.appendChild(elem);
-                this.attachMediaStream(elem, stream, type, 'Consumer');
+                await this.attachMediaStream(elem, stream, type, 'Consumer');
                 let audioConsumerId = remotePeerId + '___pVolume';
                 this.audioConsumers.set(audioConsumerId, id);
                 let inputPv = this.getId(audioConsumerId);
@@ -2533,6 +2610,8 @@ class RoomClient {
 
     exit(offline = false) {
         if (VideoAI.active) this.stopSession();
+        if (this.rtmpFilestreamer) this.stopRTMP();
+        if (this.rtmpUrlstreamer) this.stopRTMPfromURL();
 
         const clean = () => {
             this._isConnected = false;
@@ -2583,7 +2662,7 @@ class RoomClient {
     // HELPERS
     // ####################################################
 
-    attachMediaStream(elem, stream, type, who) {
+    async attachMediaStream(elem, stream, type, who) {
         let track;
         switch (type) {
             case mediaType.audio:
@@ -3058,14 +3137,30 @@ class RoomClient {
                 document.documentElement.style.setProperty('--btns-margin-left', '0px');
                 document.documentElement.style.setProperty('--btns-width', '60px');
                 document.documentElement.style.setProperty('--btns-flex-direction', 'column');
+                // bottomButtons horizontally
+                document.documentElement.style.setProperty('--bottom-btns-top', 'auto');
+                document.documentElement.style.setProperty('--bottom-btns-left', '50%');
+                document.documentElement.style.setProperty('--bottom-btns-bottom', '0');
+                document.documentElement.style.setProperty('--bottom-btns-translate-X', '-50%');
+                document.documentElement.style.setProperty('--bottom-btns-translate-Y', '0%');
+                document.documentElement.style.setProperty('--bottom-btns-margin-bottom', '16px');
+                document.documentElement.style.setProperty('--bottom-btns-flex-direction', 'row');
                 break;
             case 'horizontal':
                 document.documentElement.style.setProperty('--btns-top', '95%');
                 document.documentElement.style.setProperty('--btns-right', '25%');
                 document.documentElement.style.setProperty('--btns-left', '50%');
-                document.documentElement.style.setProperty('--btns-margin-left', '-160px');
-                document.documentElement.style.setProperty('--btns-width', '320px');
+                document.documentElement.style.setProperty('--btns-margin-left', '-240px');
+                document.documentElement.style.setProperty('--btns-width', '480px');
                 document.documentElement.style.setProperty('--btns-flex-direction', 'row');
+                // bottomButtons vertically
+                document.documentElement.style.setProperty('--bottom-btns-top', '50%');
+                document.documentElement.style.setProperty('--bottom-btns-left', '15px');
+                document.documentElement.style.setProperty('--bottom-btns-bottom', 'auto');
+                document.documentElement.style.setProperty('--bottom-btns-translate-X', '0%');
+                document.documentElement.style.setProperty('--bottom-btns-translate-Y', '-50%');
+                document.documentElement.style.setProperty('--bottom-btns-margin-bottom', '0');
+                document.documentElement.style.setProperty('--bottom-btns-flex-direction', 'column');
                 break;
             default:
                 break;
@@ -3139,7 +3234,7 @@ class RoomClient {
             this.setTippy(fsId, 'Full screen', 'bottom');
             btnFs.addEventListener('click', () => {
                 if (videoPlayer.classList.contains('videoCircle')) {
-                    return userLog('info', 'Full Screen not allowed if video on privacy mode', 'top-end');
+                    return this.userLog('info', 'Full Screen not allowed if video on privacy mode', 'top-end');
                 }
                 videoPlayer.style.pointerEvents = this.isVideoOnFullScreen ? 'auto' : 'none';
                 this.toggleFullScreen(videoPlayer);
@@ -3149,7 +3244,7 @@ class RoomClient {
         if (videoPlayer) {
             videoPlayer.addEventListener('click', () => {
                 if (videoPlayer.classList.contains('videoCircle')) {
-                    return userLog('info', 'Full Screen not allowed if video on privacy mode', 'top-end');
+                    return this.userLog('info', 'Full Screen not allowed if video on privacy mode', 'top-end');
                 }
                 if (!videoPlayer.hasAttribute('controls')) {
                     if ((this.isMobileDevice && this.isVideoOnFullScreen) || !this.isMobileDevice) {
@@ -3345,6 +3440,9 @@ class RoomClient {
         if (this.isChatPinned) {
             this.chatPin();
         }
+        if (this.isPollPinned) {
+            this.pollPin();
+        }
         if (this.transcription.isPin()) {
             this.transcription.pinned();
         }
@@ -3389,21 +3487,31 @@ class RoomClient {
     // ####################################################
 
     handleVP(elemId, vpId) {
+        const startVideoInPrivacyMode =
+            this._moderator.video_start_privacy || localStorageSettings.moderator_video_start_privacy;
         let videoPlayer = this.getId(elemId);
         let btnVp = this.getId(vpId);
         if (btnVp && videoPlayer) {
             btnVp.addEventListener('click', () => {
                 this.sound('click');
-                isVideoPrivacyActive = !isVideoPrivacyActive;
-                this.setVideoPrivacyStatus(this.peer_id, isVideoPrivacyActive);
-                this.emitCmd({
-                    type: 'privacy',
-                    peer_id: this.peer_id,
-                    active: isVideoPrivacyActive,
-                    broadcast: true,
-                });
+                this.toggleVideoPrivacyMode();
             });
+
+            if (startVideoInPrivacyMode) {
+                btnVp.click();
+            }
         }
+    }
+
+    toggleVideoPrivacyMode() {
+        isVideoPrivacyActive = !isVideoPrivacyActive;
+        this.setVideoPrivacyStatus(this.peer_id, isVideoPrivacyActive);
+        this.emitCmd({
+            type: 'privacy',
+            peer_id: this.peer_id,
+            active: isVideoPrivacyActive,
+            broadcast: true,
+        });
     }
 
     setVideoPrivacyStatus(elemName, privacy) {
@@ -3530,6 +3638,9 @@ class RoomClient {
     toggleChatPin() {
         if (transcription.isPin()) {
             return userLog('info', 'Please unpin the transcription that appears to be currently pinned', 'top-end');
+        }
+        if (this.isPollPinned) {
+            return userLog('info', 'Please unpin the poll that appears to be currently pinned', 'top-end');
         }
         this.isChatPinned ? this.chatUnpin() : this.chatPin();
         this.sound('click');
@@ -4177,6 +4288,324 @@ class RoomClient {
         saveObjToJsonFile(this.chatMessages, 'CHAT');
     }
 
+    // ##############################################
+    // POOLS
+    // ##############################################
+
+    togglePoll() {
+        pollRoom.classList.toggle('show');
+        if (!this.isPollOpen) {
+            hide(pollMinButton);
+            if (!this.isMobileDevice) {
+                BUTTONS.poll.pollMaxButton && show(pollMaxButton);
+            }
+            this.pollCenter();
+            this.sound('open');
+        }
+        this.isPollOpen = !this.isPollOpen;
+        if (this.isPollPinned) this.pollUnpin();
+    }
+
+    togglePollPin() {
+        if (transcription.isPin()) {
+            return userLog('info', 'Please unpin the transcription that appears to be currently pinned', 'top-end');
+        }
+        if (this.isChatPinned) {
+            return userLog('info', 'Please unpin the chat that appears to be currently pinned', 'top-end');
+        }
+        this.isPollPinned ? this.pollUnpin() : this.pollPin();
+        this.sound('click');
+    }
+
+    pollPin() {
+        if (!this.isVideoPinned) {
+            this.videoMediaContainer.style.top = 0;
+            this.videoMediaContainer.style.width = '75%';
+            this.videoMediaContainer.style.height = '100%';
+        }
+        this.pollPinned();
+        this.isPollPinned = true;
+        setColor(pollTogglePin, 'lime');
+        resizeVideoMedia();
+        chatRoom.style.resize = 'none';
+        if (!this.isMobileDevice) this.makeUnDraggable(pollRoom, pollHeader);
+    }
+
+    pollUnpin() {
+        if (!this.isVideoPinned) {
+            this.videoMediaContainer.style.top = 0;
+            this.videoMediaContainer.style.right = null;
+            this.videoMediaContainer.style.width = '100%';
+            this.videoMediaContainer.style.height = '100%';
+        }
+        pollRoom.style.maxWidth = '600px';
+        pollRoom.style.maxHeight = '700px';
+        this.pollCenter();
+        this.isPollPinned = false;
+        setColor(pollTogglePin, 'white');
+        resizeVideoMedia();
+        if (!this.isMobileDevice) this.makeDraggable(pollRoom, pollHeader);
+    }
+
+    pollPinned() {
+        pollRoom.style.position = 'absolute';
+        pollRoom.style.top = 0;
+        pollRoom.style.right = 0;
+        pollRoom.style.left = null;
+        pollRoom.style.transform = null;
+        pollRoom.style.maxWidth = '25%';
+        pollRoom.style.maxHeight = '100%';
+    }
+
+    pollCenter() {
+        pollRoom.style.position = 'fixed';
+        pollRoom.style.transform = 'translate(-50%, -50%)';
+        pollRoom.style.top = '50%';
+        pollRoom.style.left = '50%';
+    }
+
+    pollMaximize() {
+        pollRoom.style.maxHeight = '100vh';
+        pollRoom.style.maxWidth = '100vw';
+        this.pollCenter();
+        hide(pollMaxButton);
+        BUTTONS.poll.pollMaxButton && show(pollMinButton);
+    }
+
+    pollMinimize() {
+        this.pollCenter();
+        hide(pollMinButton);
+        BUTTONS.poll.pollMaxButton && show(pollMaxButton);
+        if (this.isPollPinned) {
+            this.pollPin();
+        } else {
+            pollRoom.style.maxWidth = '600px';
+            pollRoom.style.maxHeight = '700px';
+        }
+    }
+
+    pollsUpdate(polls) {
+        if (!this.isPollOpen) this.togglePoll();
+
+        pollsContainer.innerHTML = '';
+        polls.forEach((poll, index) => {
+            const pollDiv = document.createElement('div');
+            pollDiv.className = 'poll';
+
+            const question = document.createElement('p');
+            question.className = 'poll-question';
+            question.textContent = poll.question;
+            pollDiv.appendChild(question);
+
+            const options = document.createElement('div');
+            options.className = 'options';
+
+            poll.options.forEach((option) => {
+                const optionDiv = document.createElement('div');
+                const input = document.createElement('input');
+                input.type = 'radio';
+                input.name = `poll${index}`;
+                input.value = option;
+                if (this.pollSelectedOptions[index] === option) {
+                    input.checked = true;
+                }
+
+                input.addEventListener('change', () => {
+                    this.pollSelectedOptions[index] = option;
+                    this.socket.emit('vote', { pollIndex: index, option });
+                });
+
+                const label = document.createElement('label');
+                label.textContent = option;
+
+                optionDiv.appendChild(input);
+                optionDiv.appendChild(label);
+                options.appendChild(optionDiv);
+            });
+            pollDiv.appendChild(options);
+
+            // Only the presenters
+            // if (isPresenter) {
+            const pollButtonsDiv = document.createElement('div');
+            pollButtonsDiv.className = 'poll-btns';
+
+            // Toggle voters button
+            const toggleButton = document.createElement('button');
+            const toggleButtonIcon = document.createElement('i');
+            toggleButtonIcon.className = 'fas fa-users';
+            toggleButton.id = 'toggleVoters';
+            toggleButton.className = 'view-btn';
+            // Append the icon to the button
+            toggleButton.insertBefore(toggleButtonIcon, toggleButton.firstChild);
+            toggleButton.addEventListener('click', () => {
+                votersList.style.display === 'none'
+                    ? (votersList.style.display = 'block')
+                    : (votersList.style.display = 'none');
+            });
+            pollButtonsDiv.appendChild(toggleButton);
+
+            // Edit poll button using swal
+            const editPollButton = document.createElement('button');
+            const editPollButtonIcon = document.createElement('i');
+            editPollButtonIcon.className = 'fas fa-pen-to-square';
+            editPollButton.id = 'editPoll';
+            editPollButton.className = 'poll-btn';
+            editPollButton.insertBefore(editPollButtonIcon, editPollButton.firstChild);
+            editPollButton.addEventListener('click', () => {
+                Swal.fire({
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    background: swalBackground,
+                    title: 'Edit Poll',
+                    html: this.createPollInputs(poll),
+                    focusConfirm: false,
+                    showCancelButton: true,
+                    confirmButtonText: 'Save',
+                    cancelButtonText: 'Cancel',
+                    cancelButtonColor: '#dc3545',
+                    preConfirm: () => {
+                        const newQuestion = document.getElementById('swal-input-question').value;
+                        const newOptions = this.getPollOptions(poll.options.length);
+                        this.socket.emit('editPoll', {
+                            index,
+                            question: newQuestion,
+                            options: newOptions,
+                            peer_name: this.peer_name,
+                            peer_uuid: this.peer_uuid,
+                        });
+                    },
+                    showClass: { popup: 'animate__animated animate__fadeInDown' },
+                    hideClass: { popup: 'animate__animated animate__fadeOutUp' },
+                });
+            });
+            pollButtonsDiv.appendChild(editPollButton);
+
+            // Delete poll button
+            const deletePollButton = document.createElement('button');
+            const deletePollButtonIcon = document.createElement('i');
+            deletePollButtonIcon.className = 'fas fa-minus';
+            deletePollButton.id = 'delPoll';
+            deletePollButton.className = 'del-btn';
+            deletePollButton.insertBefore(deletePollButtonIcon, deletePollButton.firstChild);
+            deletePollButton.addEventListener('click', () => {
+                this.socket.emit('deletePoll', { index, peer_name: this.peer_name, peer_uuid: this.peer_uuid });
+            });
+            pollButtonsDiv.appendChild(deletePollButton);
+
+            // Append buttons to poll
+            pollDiv.appendChild(pollButtonsDiv);
+
+            // Create voter lists
+            const votersList = document.createElement('ul');
+            votersList.style.display = 'none';
+            for (const [user, vote] of Object.entries(poll.voters)) {
+                const voter = document.createElement('li');
+                voter.textContent = `${user}: ${vote}`;
+                votersList.appendChild(voter);
+            }
+            pollDiv.appendChild(votersList);
+            // }
+
+            pollsContainer.appendChild(pollDiv);
+
+            if (!this.isMobileDevice) {
+                setTippy('toggleVoters', 'Toggle voters', 'top');
+                setTippy('delPoll', 'Delete poll', 'top');
+                setTippy('editPoll', 'Edit poll', 'top');
+            }
+        });
+    }
+
+    pollCreateNewForm(e) {
+        e.preventDefault();
+
+        const question = e.target.question.value;
+        const optionInputs = document.querySelectorAll('.option-input');
+        const options = Array.from(optionInputs).map((input) => input.value.trim());
+
+        this.socket.emit('createPoll', { question, options });
+
+        e.target.reset();
+        optionsContainer.innerHTML = '';
+        const initialOptionInput = document.createElement('input');
+        initialOptionInput.type = 'text';
+        initialOptionInput.name = 'option';
+        initialOptionInput.className = 'option-input';
+        initialOptionInput.required = true;
+        optionsContainer.appendChild(initialOptionInput);
+    }
+
+    pollAddOptions() {
+        const optionInput = document.createElement('input');
+        optionInput.type = 'text';
+        optionInput.name = 'option';
+        optionInput.className = 'option-input';
+        optionInput.required = true;
+        optionsContainer.appendChild(optionInput);
+    }
+
+    pollDeleteOptions() {
+        const optionInputs = document.querySelectorAll('.option-input');
+        if (optionInputs.length > 1) {
+            optionsContainer.removeChild(optionInputs[optionInputs.length - 1]);
+        }
+    }
+
+    createPollInputs(poll) {
+        const questionInput = `<input id="swal-input-question" class="swal2-input" value="${poll.question}">`;
+        const optionsInputs = poll.options
+            .map((option, i) => `<input id="swal-input-option${i}" class="swal2-input" value="${option}">`)
+            .join('');
+        return questionInput + optionsInputs;
+    }
+
+    getPollOptions(optionCount) {
+        const options = [];
+        for (let i = 0; i < optionCount; i++) {
+            options.push(document.getElementById(`swal-input-option${i}`).value);
+        }
+        return options;
+    }
+
+    pollSaveResults() {
+        const polls = document.querySelectorAll('.poll');
+        const results = [];
+
+        polls.forEach((poll, index) => {
+            const question = poll.querySelector('.poll-question').textContent;
+            const options = poll.querySelectorAll('.options div label');
+
+            const optionsText = Array.from(options).reduce((acc, option, index) => {
+                acc[index + 1] = option.textContent.trim();
+                return acc;
+            }, {});
+
+            const votersList = poll.querySelector('ul');
+            const voters = Array.from(votersList.querySelectorAll('li')).reduce((acc, li) => {
+                const [name, vote] = li.textContent.split(':').map((item) => item.trim());
+                acc[name] = vote;
+                return acc;
+            }, {});
+
+            results.push({
+                Poll: `${index + 1}`,
+                question: question,
+                options: optionsText,
+                voters: voters,
+            });
+        });
+
+        results.length > 0
+            ? saveObjToJsonFile(results, 'Poll')
+            : this.userLog('info', 'No polling data available to save', 'top-end');
+    }
+
+    getPollFileName() {
+        const dateTime = getDataTimeStringFormat();
+        const roomName = this.room_id.trim();
+        return `Poll_${roomName}_${dateTime}.txt`;
+    }
+
     // ####################################################
     // RECORDING
     // ####################################################
@@ -4709,7 +5138,7 @@ class RoomClient {
         function handleDragEnter(e) {
             e.preventDefault();
             e.stopPropagation();
-            e.target.style.background = '#f0f0f0';
+            e.target.style.background = 'var(--body-bg)';
         }
 
         function handleDragOver(e) {
@@ -4744,6 +5173,9 @@ class RoomClient {
     }
 
     sendFileInformations(file, peer_id, broadcast = false) {
+        if (this.isFileReaderRunning()) {
+            return this.userLog('warning', 'File transfer in progress. Please wait until it completes', 'top-end');
+        }
         this.fileToSend = file;
         //
         if (this.fileToSend && this.fileToSend.size > 0) {
@@ -4814,6 +5246,7 @@ class RoomClient {
             <br/> 
             <ul>
                 <li>From: ${this.incomingFileInfo.peer_name}</li>
+                <li>Id: ${this.incomingFileInfo.peer_id}</li>
                 <li>Name: ${this.incomingFileInfo.fileName}</li>
                 <li>Size: ${this.bytesToSize(this.incomingFileInfo.fileSize)}</li>
             </ul>`,
@@ -4890,7 +5323,7 @@ class RoomClient {
     }
 
     abortFileTransfer() {
-        if (this.fileReader && this.fileReader.readyState === 1) {
+        if (this.isFileReaderRunning()) {
             this.fileReader.abort();
             sendFileDiv.style.display = 'none';
             this.sendInProgress = false;
@@ -4900,8 +5333,31 @@ class RoomClient {
         }
     }
 
+    abortReceiveFileTransfer() {
+        const data = { peer_name: this.peer_name };
+        this.socket.emit('receiveFileAbort', data);
+        setTimeout(() => {
+            this.handleFileAbort(data);
+        }, 1000);
+    }
+
     hideFileTransfer() {
         receiveFileDiv.style.display = 'none';
+    }
+
+    isFileReaderRunning() {
+        return this.fileReader && this.fileReader.readyState === 1;
+    }
+
+    handleReceiveFileAbort(data) {
+        if (this.isFileReaderRunning()) {
+            this.userLog('info', data.peer_name + ' ⚠️ aborted file transfer', 'top-end');
+            this.fileReader.abort();
+            sendFileDiv.style.display = 'none';
+            this.sendInProgress = false;
+        } else {
+            this.handleFileAbort(data);
+        }
     }
 
     handleFileAbort(data) {
@@ -4911,7 +5367,7 @@ class RoomClient {
         this.receiveInProgress = false;
         receiveFileDiv.style.display = 'none';
         console.log(data.peer_name + ' aborted the file transfer');
-        userLog('info', data.peer_name + ' ⚠️ aborted the file transfer', 'top-end');
+        this.userLog('info', data.peer_name + ' ⚠️ aborted the file transfer', 'top-end');
     }
 
     handleFile(data) {
@@ -5354,27 +5810,35 @@ class RoomClient {
                 break;
             case 'showChat':
                 active
-                    ? userLog('info', `${icons.chat} Chat will be shown, when you receive a message`, 'top-end')
-                    : userLog('info', `${icons.chat} Chat not will be shown, when you receive a message`, 'top-end');
+                    ? this.userLog('info', `${icons.chat} Chat will be shown, when you receive a message`, 'top-end')
+                    : this.userLog(
+                          'info',
+                          `${icons.chat} Chat not will be shown, when you receive a message`,
+                          'top-end',
+                      );
                 break;
             case 'speechMessages':
                 this.userLog('info', `${icons.speech} Speech incoming messages ${status}`, 'top-end');
                 break;
-            case 'transcriptIsPersistentMode':
-                userLog('info', `${icons.transcript} Persistent transcription mode active: ${active}`, 'top-end');
-                break;
             case 'transcriptShowOnMsg':
                 active
-                    ? userLog(
+                    ? this.userLog(
                           'info',
                           `${icons.transcript} Transcript will be shown, when you receive a message`,
                           'top-end',
                       )
-                    : userLog(
+                    : this.userLog(
                           'info',
                           `${icons.transcript} Transcript not will be shown, when you receive a message`,
                           'top-end',
                       );
+                break;
+            case 'video_start_privacy':
+                this.userLog(
+                    'info',
+                    `${icons.moderator} Moderator: everyone starts in privacy mode ${status}`,
+                    'top-end',
+                );
                 break;
             case 'audio_start_muted':
                 this.userLog('info', `${icons.moderator} Moderator: everyone starts muted ${status}`, 'top-end');
@@ -5491,6 +5955,7 @@ class RoomClient {
             case 'accept':
                 await this.joinAllowed(data.room);
                 control.style.display = 'flex';
+                bottomButtons.style.display = 'flex';
                 this.msgPopup('info', 'Your join meeting was be accepted by moderator');
                 break;
             case 'reject':
@@ -5737,6 +6202,7 @@ class RoomClient {
         }).then((result) => {
             if (result.isConfirmed) {
                 control.style.display = 'none';
+                bottomButtons.style.display = 'none';
             } else {
                 this.exit();
             }
@@ -5972,10 +6438,11 @@ class RoomClient {
             const emojiDisplay = document.createElement('div');
             emojiDisplay.className = 'animate__animated animate__backInUp';
             emojiDisplay.style.padding = '10px';
-            emojiDisplay.style.fontSize = '3vh';
+            emojiDisplay.style.fontSize = '2vh';
             emojiDisplay.style.color = '#FFF';
             emojiDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.2)';
             emojiDisplay.style.borderRadius = '10px';
+            emojiDisplay.style.marginBottom = '5px';
             emojiDisplay.innerText = `${cmd.emoji} ${cmd.peer_name}`;
             userEmoji.appendChild(emojiDisplay);
             setTimeout(() => {
@@ -6994,8 +7461,10 @@ class RoomClient {
                                 VideoAI.avatar = avatarDataArr[0];
                                 VideoAI.avatarName = avatarDataArr[1];
                                 VideoAI.avatarVoice = avatarDataArr[2] ? avatarDataArr[2] : '';
-                                avatarVideoAIPreview.src = avatarUi.video_url.grey;
+
+                                avatarVideoAIPreview.setAttribute('src', avatarUi.video_url.grey);
                                 avatarVideoAIPreview.play();
+
                                 console.log('Avatar image click event', {
                                     avatar,
                                     avatarUi,
@@ -7006,10 +7475,14 @@ class RoomClient {
                             div.append(hr);
                             div.append(label);
                             avatarVideoAIcontainer.append(div);
+
                             // Show the first available free avatar
                             if (showFreeAvatars && avatarUi.pose_name === 'Kristin in Black Suit') {
-                                avatarVideoAIPreview.src = avatarUi.video_url.grey;
-                                avatarVideoAIPreview.play();
+                                avatarVideoAIPreview.setAttribute('src', avatarUi.video_url.grey);
+                                avatarVideoAIPreview.playsInline = true;
+                                avatarVideoAIPreview.autoplay = true;
+                                avatarVideoAIPreview.controls = true;
+                                avatarVideoAIPreview.volume = 0.5;
                             }
                         }
                     });
@@ -7251,12 +7724,64 @@ class RoomClient {
 
             this.startRendering();
 
+            this.isMobileDevice ? this.handleMobileVideoAiChat() : this.handleDesktopVideoAiChat();
+
             VideoAI.active = true;
 
             this.userLog('info', 'Video AI streaming started', 'top-end');
         } catch (error) {
             console.error('Video AI streamingStart error:', error);
         }
+    }
+
+    handleDesktopVideoAiChat() {
+        if (!this.isChatOpen) {
+            this.toggleChat();
+        }
+        this.sendMessageToVideoAi();
+    }
+
+    handleMobileVideoAiChat() {
+        if (this.videoMediaContainer.childElementCount <= 2) {
+            isHideMeActive = !isHideMeActive;
+            this.handleHideMe();
+        }
+        setTimeout(() => {
+            this.streamingTask(
+                `Welcome to ${BRAND.app.name}! Please Open the Chat and navigate to the ChatGPT section. Feel free to ask me any questions you have.`,
+            );
+        }, 2000);
+    }
+
+    sendMessageToVideoAi() {
+        const tasks = [
+            { delay: 1000, action: () => this.chatPin() },
+            { delay: 1200, action: () => this.toggleShowParticipants() },
+            { delay: 1400, action: () => this.showPeerAboutAndMessages('ChatGPT', 'ChatGPT') },
+            { delay: 1600, action: () => this.streamingTask(`Welcome to ${BRAND.app.name}!`) },
+            {
+                delay: 2000,
+                action: () => {
+                    chatMessage.value = 'Hello!';
+                    this.sendMessage();
+                },
+            },
+        ];
+        this.executeTasksSequentially(tasks);
+    }
+
+    executeTasksSequentially(tasks) {
+        tasks.reduce((promise, task) => {
+            return promise.then(
+                () =>
+                    new Promise((resolve) => {
+                        setTimeout(() => {
+                            task.action();
+                            resolve();
+                        }, task.delay);
+                    }),
+            );
+        }, Promise.resolve());
     }
 
     streamingTask(message) {
@@ -7375,6 +7900,222 @@ class RoomClient {
         this.stopRendering();
 
         VideoAI.active = false;
+    }
+
+    // ##############################################
+    // RTMP from FILE
+    // ##############################################
+
+    getRTMP() {
+        this.socket.request('getRTMP').then(function (filenames) {
+            console.log('RTMP files', filenames);
+            if (filenames.length === 0) {
+                const fileNameDiv = rc.getId('file-name');
+                fileNameDiv.textContent = 'No file found to stream';
+                //elemDisplay('startRtmpButton', false);
+            }
+
+            //const f = Array.from({ length: 20 }, (_, index) => `My-file-video-to-stream-to-rtmp-server ${index + 1}`);
+
+            const fileListTbody = rc.getId('file-list');
+            fileListTbody.innerHTML = '';
+
+            filenames.forEach((filename) => {
+                const fileRow = document.createElement('tr');
+                const fileCell = document.createElement('td');
+                fileCell.textContent = filename;
+                fileCell.className = 'file-item';
+                fileCell.onclick = () => showFilename(fileCell, filename);
+                fileRow.appendChild(fileCell);
+                fileListTbody.appendChild(fileRow);
+            });
+
+            function showFilename(clickedItem, filename) {
+                const fileNameDiv = rc.getId('file-name');
+                fileNameDiv.textContent = `Selected file: ${filename}`;
+                rc.selectedRtmpFilename = filename;
+                const fileItems = document.querySelectorAll('.file-item');
+                fileItems.forEach((item) => item.classList.remove('selected'));
+
+                if (clickedItem) {
+                    clickedItem.classList.add('selected');
+                }
+            }
+        });
+    }
+
+    async startRTMP() {
+        if (!this.isRTMPVideoSupported(filterXSS(this.selectedRtmpFilename))) {
+            this.getId('file-name').textContent = '';
+            return this.userLog(
+                'warning',
+                "The provided File is not valid. Please ensure it's .mp4, webm or ogg video file",
+                'top-end',
+            );
+        }
+
+        this.socket
+            .request('startRTMP', {
+                file: filterXSS(this.selectedRtmpFilename),
+                peer_name: filterXSS(this.peer_name),
+                peer_uuid: filterXSS(this.peer_uuid),
+            })
+            .then(function (rtmp) {
+                rc.event(_EVENTS.startRTMP);
+                rc.showRTMP(rtmp, 'file');
+                rc.rtmpFileStreamer = true;
+            });
+    }
+
+    stopRTMP() {
+        if (this.rtmpFileStreamer) {
+            this.socket.request('stopRTMP');
+            this.rtmpFileStreamer = false;
+            this.cleanRTMPUrl();
+            console.log('RTMP STOP');
+            this.event(_EVENTS.stopRTMP);
+        }
+    }
+
+    endRTMP(data) {
+        const rtmpMessage = `${data.rtmpUrl} processing finished!`;
+        this.rtmpFileStreamer = false;
+        this.userLog('info', rtmpMessage, 'top-end');
+        console.log(rtmpMessage);
+        this.cleanRTMPUrl();
+        this.socket.request('endOrErrorRTMP');
+        this.event(_EVENTS.endRTMP);
+    }
+
+    errorRTMP(data) {
+        const rtmpError = `${data.message}`;
+        this.rtmpFileStreamer = false;
+        this.userLog('error', rtmpError, 'top-end');
+        console.error(rtmpError);
+        this.cleanRTMPUrl();
+        this.socket.request('endOrErrorRTMP');
+        this.event(_EVENTS.endRTMP);
+    }
+
+    // ##############################################
+    // RTMP from URL
+    // ##############################################
+
+    startRTMPfromURL(inputVideoURL) {
+        if (!this.isRTMPVideoSupported(filterXSS(inputVideoURL))) {
+            this.getId('rtmpStreamURL').value = '';
+            return this.userLog(
+                'warning',
+                'The provided URL is not valid. Please ensure it links to an .mp4 video file',
+                'top-end',
+            );
+        }
+
+        this.socket
+            .request('startRTMPfromURL', {
+                inputVideoURL: filterXSS(inputVideoURL),
+                peer_name: filterXSS(this.peer_name),
+                peer_uuid: filterXSS(this.peer_uuid),
+            })
+            .then(function (rtmp) {
+                rc.event(_EVENTS.startRTMPfromURL);
+                rc.showRTMP(rtmp, 'url');
+                rc.rtmpUrlStreamer = true;
+            });
+    }
+
+    stopRTMPfromURL() {
+        if (this.rtmpUrlStreamer) {
+            this.socket.request('stopRTMPfromURL');
+            this.rtmpUrlStreamer = false;
+            this.cleanRTMPUrl();
+            console.log('RTMP from URL STOP');
+            this.event(_EVENTS.stopRTMPfromURL);
+        }
+    }
+
+    endRTMPfromURL(data) {
+        const rtmpMessage = `${data.rtmpUrl} processing finished!`;
+        this.rtmpUrlStreamer = false;
+        this.userLog('info', rtmpMessage, 'top-end');
+        console.log(rtmpMessage);
+        this.cleanRTMPUrl();
+        this.socket.request('endOrErrorRTMPfromURL');
+        this.event(_EVENTS.endRTMPfromURL);
+    }
+
+    errorRTMPfromURL(data) {
+        const rtmpError = `${data.message}`;
+        this.rtmpUrlStreamer = false;
+        this.userLog('error', rtmpError, 'top-end');
+        console.error(rtmpError);
+        this.cleanRTMPUrl();
+        this.socket.request('endOrErrorRTMPfromURL');
+        this.event(_EVENTS.endRTMPfromURL);
+    }
+
+    // ##############################################
+    // RTMP common
+    // ##############################################
+
+    isRTMPVideoSupported(video) {
+        if (video.endsWith('.mp4') || video.endsWith('.webm')) return true;
+        return false;
+    }
+
+    copyRTMPUrl(url) {
+        if (!url) return this.userLog('info', 'No RTMP URL detected', 'top-end');
+        copyToClipboard(url);
+    }
+
+    cleanRTMPUrl() {
+        const rtmpUrl = rc.getId('rtmpLiveUrl');
+        rtmpUrl.value = '';
+    }
+
+    showRTMP(rtmp, type = 'file') {
+        console.log('rtmp', rtmp);
+
+        if (!rtmp) {
+            switch (type) {
+                case 'file':
+                    this.event(_EVENTS.endRTMP);
+                    break;
+                case 'url':
+                    this.event(_EVENTS.endRTMPfromURL);
+                    break;
+                default:
+                    break;
+            }
+            return this.userLog(
+                'warning',
+                'Unable to start the RTMP stream. Please ensure the RTMP server is running. If the problem persists, contact the administrator',
+                'top-end',
+                6000,
+            );
+        }
+
+        const rtmpUrl = rc.getId('rtmpLiveUrl');
+        rtmpUrl.value = filterXSS(rtmp);
+
+        Swal.fire({
+            background: swalBackground,
+            imageUrl: image.rtmp,
+            position: 'center',
+            title: 'LIVE',
+            html: `
+                <p style="background:transparent; color:rgb(8, 189, 89);">${rtmp}</p>
+                `,
+            showDenyButton: false,
+            showCancelButton: false,
+            confirmButtonText: `Copy URL`,
+            showClass: { popup: 'animate__animated animate__fadeInDown' },
+            hideClass: { popup: 'animate__animated animate__fadeOutUp' },
+        }).then((result) => {
+            if (result.isConfirmed) {
+                copyToClipboard(rtmp);
+            }
+        });
     }
 
     sleep(ms) {

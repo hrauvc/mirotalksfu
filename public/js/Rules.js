@@ -22,6 +22,7 @@ let BUTTONS = {
         startScreenButton: true,
         swapCameraButton: true,
         chatButton: true,
+        pollButton: true,
         raiseHandButton: true,
         transcriptionButton: true,
         whiteboardButton: true,
@@ -38,6 +39,7 @@ let BUTTONS = {
         lobbyButton: true, // presenter
         sendEmailInvitation: true, // presenter
         micOptionsButton: true, // presenter
+        tabRTMPStreamingBtn: true, // presenter
         tabModerator: true, // presenter
         tabRecording: true,
         host_only_recording: true, // presenter
@@ -83,6 +85,11 @@ let BUTTONS = {
         chatSpeechStartButton: true,
         chatGPT: true,
     },
+    poll: {
+        pollPinButton: true,
+        pollMaxButton: true,
+        pollSaveButton: true,
+    },
     participantsList: {
         saveInfoButton: true, // presenter
         sendFileAllButton: true, // presenter
@@ -113,6 +120,7 @@ function handleRules(isPresenter) {
         BUTTONS.settings.lobbyButton = false;
         BUTTONS.settings.sendEmailInvitation = false;
         BUTTONS.settings.micOptionsButton = false;
+        BUTTONS.settings.tabRTMPStreamingBtn = false;
         BUTTONS.settings.tabModerator = false;
         BUTTONS.videoOff.muteAudioButton = false;
         BUTTONS.videoOff.geolocationButton = false;
@@ -130,6 +138,7 @@ function handleRules(isPresenter) {
         // PRESENTER
         // ##################################
         BUTTONS.main.shareButton = true;
+        BUTTONS.settings.tabRTMPStreamingBtn = true;
         BUTTONS.settings.lockRoomButton = BUTTONS.settings.lockRoomButton && !isRoomLocked;
         BUTTONS.settings.unlockRoomButton = BUTTONS.settings.lockRoomButton && isRoomLocked;
         BUTTONS.settings.sendEmailInvitation = true;
@@ -153,6 +162,7 @@ function handleRules(isPresenter) {
         switchHostOnlyRecording.checked = hostOnlyRecording;
         rc.roomAction(hostOnlyRecording ? 'hostOnlyRecordingOn' : 'hostOnlyRecordingOff', true, false);
         // Room moderator
+        switchEveryonePrivacy.checked = localStorageSettings.moderator_video_start_privacy;
         switchEveryoneMute.checked = localStorageSettings.moderator_audio_start_muted;
         switchEveryoneHidden.checked = localStorageSettings.moderator_video_start_hidden;
         switchEveryoneCantUnmute.checked = localStorageSettings.moderator_audio_cant_unmute;
@@ -164,6 +174,7 @@ function handleRules(isPresenter) {
 
         // Update moderator settings...
         const moderatorData = {
+            video_start_privacy: switchEveryonePrivacy.checked,
             audio_start_muted: switchEveryoneMute.checked,
             video_start_hidden: switchEveryoneHidden.checked,
             audio_cant_unmute: switchEveryoneCantUnmute.checked,
@@ -177,6 +188,14 @@ function handleRules(isPresenter) {
     }
     // main. settings...
     BUTTONS.main.shareButton ? show(shareButton) : hide(shareButton);
+    if (BUTTONS.settings.tabRTMPStreamingBtn) {
+        show(tabRTMPStreamingBtn);
+        show(startRtmpButton);
+        show(startRtmpURLButton);
+        show(streamerRtmpButton);
+    } else {
+        hide(tabRTMPStreamingBtn);
+    }
     BUTTONS.settings.lockRoomButton ? show(lockRoomButton) : hide(lockRoomButton);
     BUTTONS.settings.unlockRoomButton ? show(unlockRoomButton) : hide(unlockRoomButton);
     BUTTONS.settings.broadcastingButton ? show(broadcastingButton) : hide(broadcastingButton);
@@ -194,9 +213,7 @@ function handleRules(isPresenter) {
         hide(roomHostOnlyRecording);
     }
     BUTTONS.participantsList.saveInfoButton ? show(participantsSaveBtn) : hide(participantsSaveBtn);
-    BUTTONS.whiteboard.whiteboardLockButton
-        ? elemDisplay('whiteboardLockButton', true)
-        : elemDisplay('whiteboardLockButton', false, 'flex');
+    BUTTONS.whiteboard.whiteboardLockButton ? show(whiteboardUnlockBtn) : hide(whiteboardUnlockBtn);
     //...
 }
 
@@ -211,12 +228,14 @@ function handleRulesBroadcasting() {
     //BUTTONS.main.raiseHandButton = false;
     BUTTONS.main.whiteboardButton = false;
     //BUTTONS.main.emojiRoomButton = false,
+    //BUTTONS.main.pollButton = false;
     BUTTONS.main.transcriptionButton = false;
     BUTTONS.main.settingsButton = false;
     BUTTONS.participantsList.saveInfoButton = false;
     BUTTONS.settings.lockRoomButton = false;
     BUTTONS.settings.unlockRoomButton = false;
     BUTTONS.settings.lobbyButton = false;
+    BUTTONS.settings.tabRTMPStreamingBtn = false;
     BUTTONS.videoOff.muteAudioButton = false;
     BUTTONS.videoOff.geolocationButton = false;
     BUTTONS.videoOff.banButton = false;
@@ -243,10 +262,12 @@ function handleRulesBroadcasting() {
     //elemDisplay('raiseHandButton', false);
     elemDisplay('whiteboardButton', false);
     //elemDisplay('emojiRoomButton', false);
+    //elemDisplay('pollButton', false);
     elemDisplay('transcriptionButton', false);
     elemDisplay('lockRoomButton', false);
     elemDisplay('unlockRoomButton', false);
     elemDisplay('lobbyButton', false);
     elemDisplay('settingsButton', false);
+    elemDisplay('tabRTMPStreamingBtn', false);
     //...
 }

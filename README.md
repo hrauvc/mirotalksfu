@@ -62,6 +62,9 @@
 -   Push-to-talk functionality, similar to a walkie-talkie.
 -   Advanced collaborative whiteboard for teachers.
 -   Real-time sharing of YouTube embed videos, video files (MP4, WebM, OGG), and audio files (MP3).
+-   Real-time polls, allows users to create and participate in live polls, providing instant feedback and results.
+-   Integrated RTMP server, fully compatible with **[OBS](https://obsproject.com)**.
+-   Supports RTMP streaming from files, URLs, webcams, screens, and windows.
 -   Full-screen mode with one-click video element zooming and pin/unpin.
 -   Customizable UI themes.
 -   Right-click options on video elements for additional controls.
@@ -163,7 +166,7 @@ To embed a meeting in `your service or app` using an iframe, use the following c
 
 -   Before running MiroTalk SFU, ensure you have `Node.js` and all [requirements](https://mediasoup.org/documentation/v3/mediasoup/installation/#requirements) installed. This project has been tested with Node version [18.X](https://nodejs.org/en/download).
 
--   Requirements install example for `Ubuntu 20.04`
+-   Requirements install example for `Ubuntu 24.04 LTS`
 
 ```bash
 # Gcc g++ make
@@ -175,6 +178,8 @@ $ apt install -y software-properties-common
 $ add-apt-repository -y ppa:deadsnakes/ppa
 $ apt update
 $ apt install -y python3.8 python3-pip
+# FFmpeg
+$ apt install -y ffmpeg
 ```
 
 ---

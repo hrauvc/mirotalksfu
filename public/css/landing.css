@@ -1074,14 +1074,14 @@ label {
     height: 32px;
 }
 .button-primary {
-    background: #097dea;
     background: linear-gradient(65deg, #0270d7 0, #0f8afd 100%);
     border-radius: 6px;
 }
 .button-primary:hover {
-    background: #0982f4;
-    background: linear-gradient(65deg, #0275e1 0, #198ffd 100%);
+    background: linear-gradient(65deg, #0275e1 0%, #198ffd 100%);
     border-radius: 6px;
+    filter: brightness(1.1) saturate(1.2);
+    box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
 }
 .button-block {
     display: flex;
@@ -1096,6 +1096,20 @@ label {
         max-width: 280px;
     }
 }
+
+.header-logo-image {
+    display: inline-block;
+    transition:
+        transform 0.3s,
+        filter 0.3s,
+        box-shadow 0.3s;
+}
+
+.header-logo-image:hover {
+    filter: brightness(1.5) saturate(1.2);
+    box-shadow: 0 4px 15px rgba(0, 0, 255, 0.6);
+}
+
 .site-header {
     padding: 24px 0;
 }

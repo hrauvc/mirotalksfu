@@ -200,12 +200,11 @@ video {
 }
 
 video:hover {
-    opacity: 0.9;
+    filter: contrast(105%);
 }
 
 video:fullscreen {
     object-fit: contain;
-    opacity: 1;
 }
 
 .mirror {

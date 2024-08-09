@@ -11,7 +11,7 @@ if (location.href.substr(0, 5) !== 'https') location.href = 'https' + location.h
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.51
+ * @version 1.5.28
  *
  */
 
@@ -40,16 +40,16 @@ const _PEER = {
     presenter: '<i class="fa-solid fa-user-shield"></i>',
     guest: '<i class="fa-solid fa-signal"></i>',
     audioOn: '<i class="fas fa-microphone"></i>',
-    audioOff: '<i style="color: red;" class="fas fa-microphone-slash"></i>',
+    audioOff: '<i class="fas fa-microphone-slash red"></i>',
     videoOn: '<i class="fas fa-video"></i>',
-    videoOff: '<i style="color: red;" class="fas fa-video-slash"></i>',
+    videoOff: '<i class="fas fa-video-slash red"></i>',
     screenOn: '<i class="fas fa-desktop"></i>',
-    screenOff: '<i style="color: red;" class="fas fa-desktop"></i>',
+    screenOff: '<i class="fas fa-desktop red"></i>',
     raiseHand: '<i style="color: rgb(0, 255, 71);" class="fas fa-hand-paper pulsate"></i>',
     lowerHand: '',
     acceptPeer: '<i class="fas fa-check"></i>',
-    banPeer: '<i class="fas fa-ban"></i>',
-    ejectPeer: '<i class="fas fa-times"></i>',
+    banPeer: '<i class="fas fa-ban red"></i>',
+    ejectPeer: '<i class="fas fa-right-from-bracket red"></i>',
     geoLocation: '<i class="fas fa-location-dot"></i>',
     sendFile: '<i class="fas fa-upload"></i>',
     sendMsg: '<i class="fas fa-paper-plane"></i>',
@@ -63,13 +63,19 @@ const bars = document.querySelectorAll('.volume-bar');
 const userAgent = navigator.userAgent.toLowerCase();
 const isTabletDevice = isTablet(userAgent);
 const isIPadDevice = isIpad(userAgent);
+const thisInfo = getInfo();
 
 const Base64Prefix = 'data:application/pdf;base64,';
 
+// Whiteboard
 const wbImageInput = 'image/*';
 const wbPdfInput = 'application/pdf';
-const wbWidth = 1200;
-const wbHeight = 600;
+const wbWidth = 1366;
+const wbHeight = 768;
+const wbGridSize = 20;
+const wbStroke = '#cccccc63';
+let wbGridLines = [];
+let wbGridVisible = false;
 
 const swalImageUrl = '../images/pricing-illustration.svg';
 
@@ -299,26 +305,18 @@ function initClient() {
             'Prioritize h.264 with AAC or h.264 with Opus codecs over VP8 with Opus or VP9 with Opus codecs',
             'right',
         );
+        setTippy('refreshVideoFiles', 'Refresh', 'left');
         setTippy('switchServerRecording', 'The recording will be stored on the server rather than locally', 'right');
         setTippy('whiteboardGhostButton', 'Toggle transparent background', 'bottom');
+        setTippy('whiteboardGridBtn', 'Toggle whiteboard grid', 'bottom');
         setTippy('wbBackgroundColorEl', 'Background color', 'bottom');
         setTippy('wbDrawingColorEl', 'Drawing color', 'bottom');
         setTippy('whiteboardPencilBtn', 'Drawing mode', 'bottom');
         setTippy('whiteboardObjectBtn', 'Object mode', 'bottom');
         setTippy('whiteboardUndoBtn', 'Undo', 'bottom');
         setTippy('whiteboardRedoBtn', 'Redo', 'bottom');
-        setTippy('whiteboardImgFileBtn', 'Add image file', 'bottom');
-        setTippy('whiteboardPdfFileBtn', 'Add pdf file', 'bottom');
-        setTippy('whiteboardImgUrlBtn', 'Add image url', 'bottom');
-        setTippy('whiteboardTextBtn', 'Add text', 'bottom');
-        setTippy('whiteboardLineBtn', 'Add line', 'bottom');
-        setTippy('whiteboardRectBtn', 'Add rectangle', 'bottom');
-        setTippy('whiteboardTriangleBtn', 'Add triangle', 'bottom');
-        setTippy('whiteboardCircleBtn', 'Add circle', 'bottom');
-        setTippy('whiteboardSaveBtn', 'Save', 'bottom');
-        setTippy('whiteboardEraserBtn', 'Eraser', 'bottom');
-        setTippy('whiteboardCleanBtn', 'Clean', 'bottom');
-        setTippy('whiteboardLockButton', 'If enabled, participants cannot interact', 'right');
+        setTippy('whiteboardLockBtn', 'If Locked, participants cannot interact', 'right');
+        setTippy('whiteboardUnlockBtn', 'If Locked, participants cannot interact', 'right');
         setTippy('whiteboardCloseBtn', 'Close', 'right');
         setTippy('chatCleanTextButton', 'Clean', 'top');
         setTippy('chatPasteButton', 'Paste', 'top');
@@ -335,6 +333,13 @@ function initClient() {
         setTippy('chatShowParticipantsList', 'Toggle participants list', 'bottom');
         setTippy('chatMaxButton', 'Maximize', 'bottom');
         setTippy('chatMinButton', 'Minimize', 'bottom');
+        setTippy('pollTogglePin', 'Toggle pin', 'bottom');
+        setTippy('pollMaxButton', 'Maximize', 'bottom');
+        setTippy('pollMinButton', 'Minimize', 'bottom');
+        setTippy('pollSaveButton', 'Save results', 'bottom');
+        setTippy('pollCloseBtn', 'Close', 'bottom');
+        setTippy('pollAddOptionBtn', 'Add option', 'top');
+        setTippy('pollDelOptionBtn', 'Delete option', 'top');
         setTippy('participantsSaveBtn', 'Save participants info', 'bottom');
         setTippy('participantsRaiseHandBtn', 'Toggle raise hands', 'bottom');
         setTippy('participantsUnreadMessagesBtn', 'Toggle unread messages', 'bottom');
@@ -344,7 +349,6 @@ function initClient() {
         setTippy('transcriptionMinBtn', 'Minimize', 'bottom');
         setTippy('transcriptionSpeechStatus', 'Status', 'bottom');
         setTippy('transcriptShowOnMsg', 'Show transcript on new message comes', 'bottom');
-        setTippy('transcriptPersistentMode', 'Prevent stopping in the absence of speech', 'bottom');
         setTippy('transcriptionSpeechStart', 'Start transcription', 'top');
         setTippy('transcriptionSpeechStop', 'Stop transcription', 'top');
     }
@@ -359,27 +363,35 @@ function initClient() {
 
 function refreshMainButtonsToolTipPlacement() {
     if (!DetectRTC.isMobileDevice) {
-        const placement = BtnsBarPosition.options[BtnsBarPosition.selectedIndex].value == 'vertical' ? 'right' : 'top';
+        //
+        const position = BtnsBarPosition.options[BtnsBarPosition.selectedIndex].value;
+        const placement = position == 'vertical' ? 'right' : 'top';
+        const bPlacement = position == 'vertical' ? 'top' : 'right';
+
+        // Control buttons
         setTippy('shareButton', 'Share room', placement);
-        setTippy('hideMeButton', 'Toggle hide self view', placement);
-        setTippy('startAudioButton', 'Start the audio', placement);
-        setTippy('stopAudioButton', 'Stop the audio', placement);
-        setTippy('startVideoButton', 'Start the video', placement);
-        setTippy('stopVideoButton', 'Stop the video', placement);
-        setTippy('startScreenButton', 'Start screen share', placement);
-        setTippy('stopScreenButton', 'Stop screen share', placement);
         setTippy('startRecButton', 'Start recording', placement);
         setTippy('stopRecButton', 'Stop recording', placement);
-        setTippy('raiseHandButton', 'Raise your hand', placement);
-        setTippy('lowerHandButton', 'Lower your hand', placement);
         setTippy('emojiRoomButton', 'Toggle emoji reaction', placement);
-        setTippy('swapCameraButton', 'Swap the camera', placement);
         setTippy('chatButton', 'Toggle the chat', placement);
+        setTippy('pollButton', 'Toggle the poll', placement);
         setTippy('transcriptionButton', 'Toggle transcription', placement);
         setTippy('whiteboardButton', 'Toggle the whiteboard', placement);
         setTippy('settingsButton', 'Toggle the settings', placement);
         setTippy('aboutButton', 'About this project', placement);
-        setTippy('exitButton', 'Leave room', placement);
+
+        // Bottom buttons
+        setTippy('startAudioButton', 'Start the audio', bPlacement);
+        setTippy('stopAudioButton', 'Stop the audio', bPlacement);
+        setTippy('startVideoButton', 'Start the video', bPlacement);
+        setTippy('stopVideoButton', 'Stop the video', bPlacement);
+        setTippy('swapCameraButton', 'Swap the camera', bPlacement);
+        setTippy('hideMeButton', 'Toggle hide self view', bPlacement);
+        setTippy('startScreenButton', 'Start screen share', bPlacement);
+        setTippy('stopScreenButton', 'Stop screen share', bPlacement);
+        setTippy('raiseHandButton', 'Raise your hand', bPlacement);
+        setTippy('lowerHandButton', 'Lower your hand', bPlacement);
+        setTippy('exitButton', 'Leave room', bPlacement);
     }
 }
 
@@ -622,7 +634,7 @@ function setupInitButtons() {
     initAudioButton.onclick = () => {
         handleAudio();
     };
-    initAudioVideoButton.onclick = async () => {
+    initAudioVideoButton.onclick = async (e) => {
         await handleAudioVideo(e);
     };
     initStartScreenButton.onclick = async () => {
@@ -851,6 +863,44 @@ function getPeerInfo() {
         browser_version: DetectRTC.browser.version,
         user_agent: userAgent,
     };
+}
+
+function getInfo() {
+    const parser = new UAParser(userAgent);
+
+    try {
+        const parserResult = parser.getResult();
+        console.log('Info', parserResult);
+
+        // Filter out properties with 'Unknown' values
+        const filterUnknown = (obj) => {
+            const filtered = {};
+            for (const [key, value] of Object.entries(obj)) {
+                if (value && value !== 'Unknown') {
+                    filtered[key] = value;
+                }
+            }
+            return filtered;
+        };
+
+        const filteredResult = {
+            //ua: parserResult.ua,
+            browser: filterUnknown(parserResult.browser),
+            cpu: filterUnknown(parserResult.cpu),
+            device: filterUnknown(parserResult.device),
+            engine: filterUnknown(parserResult.engine),
+            os: filterUnknown(parserResult.os),
+        };
+
+        // Convert the filtered result to a readable JSON string
+        const resultString = JSON.stringify(filteredResult, null, 2);
+
+        extraInfo.innerText = resultString;
+
+        return parserResult;
+    } catch (error) {
+        console.error('Error parsing user agent:', error);
+    }
 }
 
 // ####################################################
@@ -1118,6 +1168,10 @@ async function shareRoom(useNavigator = false) {
 // ROOM UTILITY
 // ####################################################
 
+function isDesktopDevice() {
+    return !DetectRTC.isMobileDevice && !isTabletDevice && !isIPadDevice;
+}
+
 function makeRoomQR() {
     let qr = new QRious({
         element: document.getElementById('qrRoom'),
@@ -1137,6 +1191,17 @@ function copyRoomURL() {
     navigator.clipboard.writeText(tmpInput.value);
     document.body.removeChild(tmpInput);
     userLog('info', 'Meeting URL copied to clipboard 👍', 'top-end');
+}
+
+function copyToClipboard(txt) {
+    let tmpInput = document.createElement('input');
+    document.body.appendChild(tmpInput);
+    tmpInput.value = txt;
+    tmpInput.select();
+    tmpInput.setSelectionRange(0, 99999); // For mobile devices
+    navigator.clipboard.writeText(tmpInput.value);
+    document.body.removeChild(tmpInput);
+    userLog('info', `${txt} copied to clipboard 👍`, 'top-end');
 }
 
 function shareRoomByEmail() {
@@ -1226,11 +1291,14 @@ function roomIsReady() {
         hide(tabRecordingBtn);
     }
     BUTTONS.main.chatButton && show(chatButton);
+    BUTTONS.main.pollButton && show(pollButton);
     BUTTONS.main.raiseHandButton && show(raiseHandButton);
     BUTTONS.main.emojiRoomButton && show(emojiRoomButton);
     !BUTTONS.chat.chatSaveButton && hide(chatSaveButton);
     BUTTONS.chat.chatEmojiButton && show(chatEmojiButton);
     BUTTONS.chat.chatMarkdownButton && show(chatMarkdownButton);
+
+    !BUTTONS.poll.pollSaveButton && hide(pollSaveButton);
 
     isWebkitSpeechRecognitionSupported && BUTTONS.chat.chatSpeechStartButton
         ? show(chatSpeechStartButton)
@@ -1243,6 +1311,9 @@ function roomIsReady() {
     show(chatCleanTextButton);
     show(chatPasteButton);
     show(chatSendButton);
+    if (isDesktopDevice()) {
+        show(whiteboardGridBtn);
+    }
     if (DetectRTC.isMobileDevice) {
         hide(initVideoAudioRefreshButton);
         hide(refreshVideoDevices);
@@ -1252,6 +1323,10 @@ function roomIsReady() {
         hide(chatTogglePin);
         hide(chatMaxButton);
         hide(chatMinButton);
+        rc.pollMaximize();
+        hide(pollTogglePin);
+        hide(pollMaxButton);
+        hide(pollMinButton);
         transcription.maximize();
         hide(transcriptionTogglePinBtn);
         hide(transcriptionMaxBtn);
@@ -1259,6 +1334,7 @@ function roomIsReady() {
     } else {
         rc.makeDraggable(emojiPickerContainer, emojiPickerHeader);
         rc.makeDraggable(chatRoom, chatHeader);
+        rc.makeDraggable(pollRoom, pollHeader);
         rc.makeDraggable(mySettings, mySettingsHeader);
         rc.makeDraggable(whiteboard, whiteboardHeader);
         rc.makeDraggable(sendFileDiv, imgShareSend);
@@ -1273,7 +1349,14 @@ function roomIsReady() {
         }
         BUTTONS.chat.chatPinButton && show(chatTogglePin);
         BUTTONS.chat.chatMaxButton && show(chatMaxButton);
+        BUTTONS.poll.pollPinButton && show(pollTogglePin);
+        BUTTONS.poll.pollMaxButton && show(pollMaxButton);
         BUTTONS.settings.pushToTalk && show(pushToTalkDiv);
+        BUTTONS.settings.tabRTMPStreamingBtn &&
+            show(tabRTMPStreamingBtn) &&
+            show(startRtmpButton) &&
+            show(startRtmpURLButton) &&
+            show(streamerRtmpButton);
     }
     if (DetectRTC.browser.name != 'Safari') {
         document.onfullscreenchange = () => {
@@ -1409,6 +1492,12 @@ function handleButtons() {
     control.onmouseout = () => {
         isButtonsBarOver = false;
     };
+    bottomButtons.onmouseover = () => {
+        isButtonsBarOver = true;
+    };
+    bottomButtons.onmouseout = () => {
+        isButtonsBarOver = false;
+    };
     exitButton.onclick = () => {
         rc.exitRoom();
     };
@@ -1439,6 +1528,14 @@ function handleButtons() {
     };
     tabVideoShareBtn.onclick = (e) => {
         rc.openTab(e, 'tabVideoShare');
+    };
+    tabRTMPStreamingBtn.onclick = (e) => {
+        rc.getRTMP();
+        rc.openTab(e, 'tabRTMPStreaming');
+    };
+    refreshVideoFiles.onclick = () => {
+        rc.getRTMP();
+        userLog('info', 'Refreshed video files', 'top-end');
     };
     tabAspectBtn.onclick = (e) => {
         rc.openTab(e, 'tabAspect');
@@ -1497,6 +1594,34 @@ function handleButtons() {
         if (DetectRTC.isMobileDevice) {
             rc.toggleShowParticipants();
         }
+    };
+    // Polls
+    pollButton.onclick = () => {
+        rc.togglePoll();
+    };
+    pollMaxButton.onclick = () => {
+        rc.pollMaximize();
+    };
+    pollMinButton.onclick = () => {
+        rc.pollMinimize();
+    };
+    pollCloseBtn.onclick = () => {
+        rc.togglePoll();
+    };
+    pollTogglePin.onclick = () => {
+        rc.togglePollPin();
+    };
+    pollSaveButton.onclick = () => {
+        rc.pollSaveResults();
+    };
+    pollAddOptionBtn.onclick = () => {
+        rc.pollAddOptions();
+    };
+    pollDelOptionBtn.onclick = () => {
+        rc.pollDeleteOptions();
+    };
+    pollCreateForm.onsubmit = (e) => {
+        rc.pollCreateNewForm(e);
     };
     transcriptionButton.onclick = () => {
         transcription.toggle();
@@ -1664,6 +1789,28 @@ function handleButtons() {
     stopScreenButton.onclick = () => {
         rc.closeProducer(RoomClient.mediaType.screen);
     };
+    copyRtmpUrlButton.onclick = () => {
+        rc.copyRTMPUrl(rtmpLiveUrl.value);
+    };
+    startRtmpButton.onclick = () => {
+        if (rc.selectedRtmpFilename == '') {
+            userLog('warning', 'Please select the Video file to stream', 'top-end', 6000);
+            return;
+        }
+        rc.startRTMP();
+    };
+    stopRtmpButton.onclick = () => {
+        rc.stopRTMP();
+    };
+    streamerRtmpButton.onclick = () => {
+        openURL(`/rtmp?v=${videoSelect.value}&a=${microphoneSelect.value}`, true);
+    };
+    startRtmpURLButton.onclick = () => {
+        rc.startRTMPfromURL(rtmpStreamURL.value);
+    };
+    stopRtmpURLButton.onclick = () => {
+        rc.stopRTMPfromURL();
+    };
     fileShareButton.onclick = () => {
         rc.selectFileToShare(socket.id, true);
     };
@@ -1675,6 +1822,9 @@ function handleButtons() {
     };
     sendAbortBtn.onclick = () => {
         rc.abortFileTransfer();
+    };
+    receiveAbortBtn.onclick = () => {
+        rc.abortReceiveFileTransfer();
     };
     receiveHideBtn.onclick = () => {
         rc.hideFileTransfer();
@@ -1727,12 +1877,14 @@ function handleButtons() {
     whiteboardCleanBtn.onclick = () => {
         confirmClearBoard();
     };
-    whiteboardLockButton.onchange = () => {
-        wbIsLock = !wbIsLock;
-        whiteboardAction(getWhiteboardAction(wbIsLock ? 'lock' : 'unlock'));
-    };
     whiteboardCloseBtn.onclick = () => {
         whiteboardAction(getWhiteboardAction('close'));
+    };
+    whiteboardLockBtn.onclick = () => {
+        toggleLockUnlockWhiteboard();
+    };
+    whiteboardUnlockBtn.onclick = () => {
+        toggleLockUnlockWhiteboard();
     };
     participantsSaveBtn.onclick = () => {
         saveRoomPeers();
@@ -2026,8 +2178,7 @@ async function toggleScreenSharing() {
 }
 
 function handleCameraMirror(video) {
-    const isDesktopDevice = !DetectRTC.isMobileDevice && !isTabletDevice && !isIPadDevice;
-    if (isDesktopDevice) {
+    if (isDesktopDevice()) {
         // Desktop devices...
         if (!video.classList.contains('mirror')) {
             video.classList.toggle('mirror');
@@ -2267,14 +2418,6 @@ function handleSelects() {
         lS.setSettings(localStorageSettings);
         e.target.blur();
     };
-    // transcript
-    transcriptPersistentMode.onchange = (e) => {
-        transcription.isPersistentMode = e.currentTarget.checked;
-        rc.roomMessage('transcriptIsPersistentMode', transcription.isPersistentMode);
-        localStorageSettings.transcript_persistent_mode = transcription.isPersistentMode;
-        lS.setSettings(localStorageSettings);
-        e.target.blur();
-    };
     transcriptShowOnMsg.onchange = (e) => {
         transcription.showOnMessage = e.currentTarget.checked;
         rc.roomMessage('transcriptShowOnMsg', transcription.showOnMessage);
@@ -2294,7 +2437,20 @@ function handleSelects() {
         wbIsBgTransparent = !wbIsBgTransparent;
         wbIsBgTransparent ? wbCanvasBackgroundColor('rgba(0, 0, 0, 0.100)') : setTheme();
     };
+    whiteboardGridBtn.onclick = (e) => {
+        toggleCanvasGrid();
+    };
     // room moderator rules
+    switchEveryonePrivacy.onchange = (e) => {
+        const videoStartPrivacy = e.currentTarget.checked;
+        isVideoPrivacyActive = !videoStartPrivacy;
+        rc.toggleVideoPrivacyMode();
+        rc.updateRoomModerator({ type: 'video_start_privacy', status: videoStartPrivacy });
+        rc.roomMessage('video_start_privacy', videoStartPrivacy);
+        localStorageSettings.moderator_video_start_privacy = videoStartPrivacy;
+        lS.setSettings(localStorageSettings);
+        e.target.blur();
+    };
     switchEveryoneMute.onchange = (e) => {
         const audioStartMuted = e.currentTarget.checked;
         rc.updateRoomModerator({ type: 'audio_start_muted', status: audioStartMuted });
@@ -2506,13 +2662,11 @@ function handleRoomEmojiPicker() {
 
 function loadSettingsFromLocalStorage() {
     rc.showChatOnMessage = localStorageSettings.show_chat_on_msg;
-    transcription.isPersistentMode = localStorageSettings.transcript_persistent_mode;
     transcription.showOnMessage = localStorageSettings.transcript_show_on_msg;
     rc.speechInMessages = localStorageSettings.speech_in_msg;
     isPitchBarEnabled = localStorageSettings.pitch_bar;
     isSoundEnabled = localStorageSettings.sounds;
     showChatOnMsg.checked = rc.showChatOnMessage;
-    transcriptPersistentMode.checked = transcription.isPersistentMode;
     transcriptShowOnMsg.checked = transcription.showOnMessage;
     speechIncomingMsg.checked = rc.speechInMessages;
     switchPitchBar.checked = isPitchBarEnabled;
@@ -2732,6 +2886,36 @@ function handleRoomClientEvents() {
             hostOnlyRecording = false;
         }
     });
+    rc.on(RoomClient.EVENTS.startRTMP, () => {
+        console.log('Room event: RTMP started');
+        hide(startRtmpButton);
+        show(stopRtmpButton);
+    });
+    rc.on(RoomClient.EVENTS.stopRTMP, () => {
+        console.log('Room event: RTMP stopped');
+        hide(stopRtmpButton);
+        show(startRtmpButton);
+    });
+    rc.on(RoomClient.EVENTS.endRTMP, () => {
+        console.log('Room event: RTMP ended');
+        hide(stopRtmpButton);
+        show(startRtmpButton);
+    });
+    rc.on(RoomClient.EVENTS.startRTMPfromURL, () => {
+        console.log('Room event: RTMP from URL started');
+        hide(startRtmpURLButton);
+        show(stopRtmpURLButton);
+    });
+    rc.on(RoomClient.EVENTS.stopRTMPfromURL, () => {
+        console.log('Room event: RTMP from URL stopped');
+        hide(stopRtmpURLButton);
+        show(startRtmpURLButton);
+    });
+    rc.on(RoomClient.EVENTS.endRTMPfromURL, () => {
+        console.log('Room event: RTMP from URL ended');
+        hide(stopRtmpURLButton);
+        show(startRtmpURLButton);
+    });
     rc.on(RoomClient.EVENTS.exitRoom, () => {
         console.log('Room event: Client leave room');
         if (rc.isRecording() || recordingStatus.innerText != '0s') {
@@ -2826,7 +3010,6 @@ function saveObjToJsonFile(dataObj, name) {
     a.click();
     setTimeout(() => {
         document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
     }, 100);
     sound('download');
 }
@@ -2866,6 +3049,7 @@ function showButtons() {
         return;
     toggleClassElements('videoMenuBar', 'inline');
     control.style.display = 'flex';
+    bottomButtons.style.display = 'flex';
     isButtonsVisible = true;
 }
 
@@ -2873,6 +3057,7 @@ function checkButtonsBar() {
     if (!isButtonsBarOver) {
         toggleClassElements('videoMenuBar', 'none');
         control.style.display = 'none';
+        bottomButtons.style.display = 'none';
         isButtonsVisible = false;
     }
     setTimeout(() => {
@@ -2999,25 +3184,19 @@ function setupWhiteboardCanvas() {
 }
 
 function setupWhiteboardCanvasSize() {
-    let optimalSize = [wbWidth, wbHeight];
-    let scaleFactorX = window.innerWidth / optimalSize[0];
-    let scaleFactorY = window.innerHeight / optimalSize[1];
-    if (scaleFactorX < scaleFactorY && scaleFactorX < 1) {
-        wbCanvas.setWidth(optimalSize[0] * scaleFactorX);
-        wbCanvas.setHeight(optimalSize[1] * scaleFactorX);
-        wbCanvas.setZoom(scaleFactorX);
-        setWhiteboardSize(optimalSize[0] * scaleFactorX, optimalSize[1] * scaleFactorX);
-    } else if (scaleFactorX > scaleFactorY && scaleFactorY < 1) {
-        wbCanvas.setWidth(optimalSize[0] * scaleFactorY);
-        wbCanvas.setHeight(optimalSize[1] * scaleFactorY);
-        wbCanvas.setZoom(scaleFactorY);
-        setWhiteboardSize(optimalSize[0] * scaleFactorY, optimalSize[1] * scaleFactorY);
-    } else {
-        wbCanvas.setWidth(optimalSize[0]);
-        wbCanvas.setHeight(optimalSize[1]);
-        wbCanvas.setZoom(1);
-        setWhiteboardSize(optimalSize[0], optimalSize[1]);
-    }
+    const optimalSize = [wbWidth, wbHeight];
+    const scaleFactorX = window.innerWidth / optimalSize[0];
+    const scaleFactorY = window.innerHeight / optimalSize[1];
+    const scaleFactor = Math.min(scaleFactorX, scaleFactorY, 1);
+
+    const newWidth = optimalSize[0] * scaleFactor;
+    const newHeight = optimalSize[1] * scaleFactor;
+
+    wbCanvas.setWidth(newWidth);
+    wbCanvas.setHeight(newHeight);
+    wbCanvas.setZoom(scaleFactor);
+    setWhiteboardSize(newWidth, newHeight);
+
     wbCanvas.calcOffset();
     wbCanvas.renderAll();
 }
@@ -3025,6 +3204,51 @@ function setupWhiteboardCanvasSize() {
 function setWhiteboardSize(w, h) {
     document.documentElement.style.setProperty('--wb-width', w);
     document.documentElement.style.setProperty('--wb-height', h);
+}
+
+function drawCanvasGrid() {
+    const width = wbCanvas.getWidth();
+    const height = wbCanvas.getHeight();
+
+    removeCanvasGrid();
+
+    // Draw vertical lines
+    for (let i = 0; i <= width; i += wbGridSize) {
+        wbGridLines.push(createGridLine(i, 0, i, height));
+    }
+    // Draw horizontal lines
+    for (let i = 0; i <= height; i += wbGridSize) {
+        wbGridLines.push(createGridLine(0, i, width, i));
+    }
+
+    // Create a group for grid lines and send it to the back
+    const gridGroup = new fabric.Group(wbGridLines, { selectable: false, evented: false });
+    wbCanvas.add(gridGroup);
+    gridGroup.sendToBack();
+    wbCanvas.renderAll();
+}
+
+function createGridLine(x1, y1, x2, y2) {
+    return new fabric.Line([x1, y1, x2, y2], {
+        stroke: wbStroke,
+        selectable: false,
+        evented: false,
+    });
+}
+
+function removeCanvasGrid() {
+    wbGridLines.forEach((line) => {
+        line.set({ stroke: wbGridVisible ? wbStroke : 'rgba(255, 255, 255, 0)' });
+        wbCanvas.remove(line);
+    });
+    wbGridLines = [];
+    wbCanvas.renderAll();
+}
+
+function toggleCanvasGrid() {
+    wbGridVisible = !wbGridVisible;
+    wbGridVisible ? drawCanvasGrid() : removeCanvasGrid();
+    wbCanvasToJson();
 }
 
 function setWhiteboardBgColor(color) {
@@ -3080,75 +3304,10 @@ function whiteboardAddObj(type) {
             });
             break;
         case 'imgFile':
-            Swal.fire({
-                allowOutsideClick: false,
-                background: swalBackground,
-                position: 'center',
-                title: 'Select the image',
-                input: 'file',
-                inputAttributes: {
-                    accept: wbImageInput,
-                    'aria-label': 'Select the image',
-                },
-                showDenyButton: true,
-                confirmButtonText: `OK`,
-                denyButtonText: `Cancel`,
-                showClass: { popup: 'animate__animated animate__fadeInDown' },
-                hideClass: { popup: 'animate__animated animate__fadeOutUp' },
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    let wbCanvasImg = result.value;
-                    if (wbCanvasImg && wbCanvasImg.size > 0) {
-                        let reader = new FileReader();
-                        reader.onload = function (event) {
-                            let imgObj = new Image();
-                            imgObj.src = event.target.result;
-                            imgObj.onload = function () {
-                                let image = new fabric.Image(imgObj);
-                                image.set({ top: 0, left: 0 }).scale(0.3);
-                                addWbCanvasObj(image);
-                            };
-                        };
-                        reader.readAsDataURL(wbCanvasImg);
-                    } else {
-                        userLog('error', 'File not selected or empty', 'top-end');
-                    }
-                }
-            });
+            setupFileSelection('Select the image', wbImageInput, renderImageToCanvas);
             break;
         case 'pdfFile':
-            Swal.fire({
-                allowOutsideClick: false,
-                background: swalBackground,
-                position: 'center',
-                title: 'Select the PDF',
-                input: 'file',
-                inputAttributes: {
-                    accept: wbPdfInput,
-                    'aria-label': 'Select the PDF',
-                },
-                showDenyButton: true,
-                confirmButtonText: `OK`,
-                denyButtonText: `Cancel`,
-                showClass: { popup: 'animate__animated animate__fadeInDown' },
-                hideClass: { popup: 'animate__animated animate__fadeOutUp' },
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    let wbCanvasPdf = result.value;
-                    if (wbCanvasPdf && wbCanvasPdf.size > 0) {
-                        let reader = new FileReader();
-                        reader.onload = async function (event) {
-                            wbCanvas.requestRenderAll();
-                            await pdfToImage(event.target.result, wbCanvas);
-                            whiteboardIsDrawingMode(false);
-                            wbCanvasToJson();
-                        };
-                        reader.readAsDataURL(wbCanvasPdf);
-                    } else {
-                        userLog('error', 'File not selected or empty', 'top-end');
-                    }
-                }
-            });
+            setupFileSelection('Select the PDF', wbPdfInput, renderPdfToCanvas);
             break;
         case 'text':
             const text = new fabric.IText('Lorem Ipsum', {
@@ -3206,6 +3365,106 @@ function whiteboardAddObj(type) {
             break;
         default:
             break;
+    }
+}
+
+function setupFileSelection(title, accept, renderToCanvas) {
+    Swal.fire({
+        allowOutsideClick: false,
+        background: swalBackground,
+        position: 'center',
+        title: title,
+        input: 'file',
+        html: `
+        <div id="dropArea">
+            <p>Drag and drop your file here</p>
+        </div>
+        `,
+        inputAttributes: {
+            accept: accept,
+            'aria-label': title,
+        },
+        didOpen: () => {
+            const dropArea = document.getElementById('dropArea');
+            dropArea.addEventListener('dragenter', handleDragEnter);
+            dropArea.addEventListener('dragover', handleDragOver);
+            dropArea.addEventListener('dragleave', handleDragLeave);
+            dropArea.addEventListener('drop', handleDrop);
+        },
+        showDenyButton: true,
+        confirmButtonText: `OK`,
+        denyButtonText: `Cancel`,
+        showClass: { popup: 'animate__animated animate__fadeInDown' },
+        hideClass: { popup: 'animate__animated animate__fadeOutUp' },
+    }).then((result) => {
+        if (result.isConfirmed) {
+            renderToCanvas(result.value);
+        }
+    });
+
+    function handleDragEnter(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.target.style.background = 'var(--body-bg)';
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+    }
+
+    function handleDragLeave(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.target.style.background = '';
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        handleFiles(files);
+        e.target.style.background = '';
+    }
+
+    function handleFiles(files) {
+        if (files.length > 0) {
+            const file = files[0];
+            console.log('Selected file:', file);
+            Swal.close();
+            renderToCanvas(file);
+        }
+    }
+}
+
+function renderImageToCanvas(wbCanvasImg) {
+    if (wbCanvasImg && wbCanvasImg.size > 0) {
+        let reader = new FileReader();
+        reader.onload = function (event) {
+            let imgObj = new Image();
+            imgObj.src = event.target.result;
+            imgObj.onload = function () {
+                let image = new fabric.Image(imgObj);
+                image.set({ top: 0, left: 0 }).scale(0.3);
+                addWbCanvasObj(image);
+            };
+        };
+        reader.readAsDataURL(wbCanvasImg);
+    }
+}
+
+async function renderPdfToCanvas(wbCanvasPdf) {
+    if (wbCanvasPdf && wbCanvasPdf.size > 0) {
+        let reader = new FileReader();
+        reader.onload = async function (event) {
+            wbCanvas.requestRenderAll();
+            await pdfToImage(event.target.result, wbCanvas);
+            whiteboardIsDrawingMode(false);
+            wbCanvasToJson();
+        };
+        reader.readAsDataURL(wbCanvasPdf);
     }
 }
 
@@ -3408,6 +3667,26 @@ function confirmClearBoard() {
     });
 }
 
+function toggleLockUnlockWhiteboard() {
+    wbIsLock = !wbIsLock;
+
+    const btnToShow = wbIsLock ? whiteboardLockBtn : whiteboardUnlockBtn;
+    const btnToHide = wbIsLock ? whiteboardUnlockBtn : whiteboardLockBtn;
+    const btnColor = wbIsLock ? 'red' : 'white';
+    const action = wbIsLock ? 'lock' : 'unlock';
+
+    show(btnToShow);
+    hide(btnToHide);
+    setColor(whiteboardLockBtn, btnColor);
+
+    whiteboardAction(getWhiteboardAction(action));
+
+    if (wbIsLock) {
+        userLog('info', 'The whiteboard is locked. \n The participants cannot interact with it.', 'top-right');
+        sound('locked');
+    }
+}
+
 function whiteboardAction(data, emit = true) {
     if (emit) {
         if (rc.thereAreParticipants()) {
@@ -3564,6 +3843,10 @@ function getParticipantsList(peers) {
             <i class="fas fa-ellipsis-vertical"></i>
             </button>
             <ul class="dropdown-menu text-start" aria-labelledby="${socket.id}-chatDropDownMenu">`;
+
+        li += `<li><button class="ml5" id="muteAllParticipantsButton" onclick="rc.peerAction('me','${socket.id}','mute',true,true)">${_PEER.audioOff} Mute all participants</button></li>`;
+        li += `<li><button class="ml5" id="hideAllParticipantsButton" onclick="rc.peerAction('me','${socket.id}','hide',true,true)">${_PEER.videoOff} Hide all participants</button></li>`;
+        li += `<li><button class="ml5" id="stopAllParticipantsButton" onclick="rc.peerAction('me','${socket.id}','stop',true,true)">${_PEER.screenOff} Stop all screen</button></li>`;
 
         if (BUTTONS.participantsList.sendFileAllButton) {
             li += `<li><button class="btn-sm ml5" id="sendAllButton" onclick="rc.selectFileToShare('${socket.id}', true)">${_PEER.sendFile} Share file to all</button></li>`;
@@ -3797,7 +4080,7 @@ function setCustomTheme() {
     const color = themeCustom.color;
     swalBackground = `radial-gradient(${color}, ${color})`;
     document.documentElement.style.setProperty('--body-bg', `radial-gradient(${color}, ${color})`);
-    document.documentElement.style.setProperty('--transcription-bg', `radial-gradient(${color}, ${color})`);
+    document.documentElement.style.setProperty('--trx-bg', `radial-gradient(${color}, ${color})`);
     document.documentElement.style.setProperty('--msger-bg', `radial-gradient(${color}, ${color})`);
     document.documentElement.style.setProperty('--left-msg-bg', `${color}`);
     document.documentElement.style.setProperty('--right-msg-bg', `${color}`);
@@ -3805,6 +4088,7 @@ function setCustomTheme() {
     document.documentElement.style.setProperty('--tab-btn-active', `${color}`);
     document.documentElement.style.setProperty('--settings-bg', `radial-gradient(${color}, ${color})`);
     document.documentElement.style.setProperty('--wb-bg', `radial-gradient(${color}, ${color})`);
+    // document.documentElement.style.setProperty('--btns-bg-color', `${color}`);
     document.documentElement.style.setProperty('--btns-bg-color', 'rgba(0, 0, 0, 0.7)');
     document.body.style.background = `radial-gradient(${color}, ${color})`;
 }
@@ -3815,84 +4099,158 @@ function setTheme() {
     selectTheme.selectedIndex = localStorageSettings.theme;
     const theme = selectTheme.value;
     switch (theme) {
-        case 'dark':
-            swalBackground = 'radial-gradient(#393939, #000000)';
-            document.documentElement.style.setProperty('--body-bg', 'radial-gradient(#393939, #000000)');
-            document.documentElement.style.setProperty('--transcription-bg', 'radial-gradient(#393939, #000000)');
-            document.documentElement.style.setProperty('--msger-bg', 'radial-gradient(#393939, #000000)');
-            document.documentElement.style.setProperty('--left-msg-bg', '#056162');
-            document.documentElement.style.setProperty('--right-msg-bg', '#252d31');
-            document.documentElement.style.setProperty('--select-bg', '#2c2c2c');
-            document.documentElement.style.setProperty('--tab-btn-active', '#393939');
-            document.documentElement.style.setProperty('--settings-bg', 'radial-gradient(#393939, #000000)');
-            document.documentElement.style.setProperty('--wb-bg', 'radial-gradient(#393939, #000000)');
+        case 'elegant':
+            swalBackground = 'linear-gradient(135deg, #000000, #434343)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #000000, #434343)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #000000, #434343)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #000000, #434343)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#1a1a1a');
+            document.documentElement.style.setProperty('--right-msg-bg', '#2e2e2e');
+            document.documentElement.style.setProperty('--select-bg', '#333333');
+            document.documentElement.style.setProperty('--tab-btn-active', '#434343');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #000000, #434343)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #000000, #434343)');
             document.documentElement.style.setProperty('--btns-bg-color', 'rgba(0, 0, 0, 0.7)');
-            document.body.style.background = 'radial-gradient(#393939, #000000)';
+            document.body.style.background = 'linear-gradient(135deg, #000000, #434343)';
             selectTheme.selectedIndex = 0;
             break;
-        case 'grey':
-            swalBackground = 'radial-gradient(#666, #333)';
-            document.documentElement.style.setProperty('--body-bg', 'radial-gradient(#666, #333)');
-            document.documentElement.style.setProperty('--transcription-bg', 'radial-gradient(#666, #333)');
-            document.documentElement.style.setProperty('--msger-bg', 'radial-gradient(#666, #333)');
-            document.documentElement.style.setProperty('--left-msg-bg', '#056162');
-            document.documentElement.style.setProperty('--right-msg-bg', '#252d31');
-            document.documentElement.style.setProperty('--select-bg', '#2c2c2c');
-            document.documentElement.style.setProperty('--tab-btn-active', '#666');
-            document.documentElement.style.setProperty('--settings-bg', 'radial-gradient(#666, #333)');
-            document.documentElement.style.setProperty('--wb-bg', 'radial-gradient(#797979, #000)');
-            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(0, 0, 0, 0.7)');
-            document.body.style.background = 'radial-gradient(#666, #333)';
+        case 'dark':
+            swalBackground = 'linear-gradient(135deg, #000000, #1a1a1a)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #000000, #1a1a1a)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #000000, #1a1a1a)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #000000, #1a1a1a)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#0d0d0d');
+            document.documentElement.style.setProperty('--right-msg-bg', '#1a1a1a');
+            document.documentElement.style.setProperty('--select-bg', '#1a1a1a');
+            document.documentElement.style.setProperty('--tab-btn-active', '#1a1a1a');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #000000, #1a1a1a)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #000000, #1a1a1a)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(0, 0, 0, 0.85)');
+            document.body.style.background = 'linear-gradient(135deg, #000000, #1a1a1a)';
             selectTheme.selectedIndex = 1;
             break;
-        case 'green':
-            swalBackground = 'radial-gradient(#003934, #001E1A)';
-            document.documentElement.style.setProperty('--body-bg', 'radial-gradient(#003934, #001E1A)');
-            document.documentElement.style.setProperty('--transcription-bg', 'radial-gradient(#003934, #001E1A)');
-            document.documentElement.style.setProperty('--msger-bg', 'radial-gradient(#003934, #001E1A)');
-            document.documentElement.style.setProperty('--left-msg-bg', '#001E1A');
-            document.documentElement.style.setProperty('--right-msg-bg', '#003934');
-            document.documentElement.style.setProperty('--select-bg', '#001E1A');
-            document.documentElement.style.setProperty('--tab-btn-active', '#003934');
-            document.documentElement.style.setProperty('--settings-bg', 'radial-gradient(#003934, #001E1A)');
-            document.documentElement.style.setProperty('--wb-bg', 'radial-gradient(#003934, #001E1A)');
-            document.documentElement.style.setProperty('--btns-bg-color', 'radial-gradient(#003934, #001E1A)');
-            document.body.style.background = 'radial-gradient(#003934, #001E1A)';
+        case 'grey':
+            swalBackground = 'linear-gradient(135deg, #1a1a1a, #4f4f4f)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #1a1a1a, #4f4f4f)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #1a1a1a, #4f4f4f)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #1a1a1a, #4f4f4f)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#2c2c2c');
+            document.documentElement.style.setProperty('--right-msg-bg', '#3f3f3f');
+            document.documentElement.style.setProperty('--select-bg', '#2a2a2a');
+            document.documentElement.style.setProperty('--tab-btn-active', '#4f4f4f');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #1a1a1a, #4f4f4f)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #1a1a1a, #4f4f4f)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(0, 0, 0, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #1a1a1a, #4f4f4f)';
             selectTheme.selectedIndex = 2;
             break;
-        case 'blue':
-            swalBackground = 'radial-gradient(#306bac, #141B41)';
-            document.documentElement.style.setProperty('--body-bg', 'radial-gradient(#306bac, #141B41)');
-            document.documentElement.style.setProperty('--transcription-bg', 'radial-gradient(#306bac, #141B41)');
-            document.documentElement.style.setProperty('--msger-bg', 'radial-gradient(#306bac, #141B41)');
-            document.documentElement.style.setProperty('--left-msg-bg', '#141B41');
-            document.documentElement.style.setProperty('--right-msg-bg', '#306bac');
-            document.documentElement.style.setProperty('--select-bg', '#141B41');
-            document.documentElement.style.setProperty('--tab-btn-active', '#306bac');
-            document.documentElement.style.setProperty('--settings-bg', 'radial-gradient(#306bac, #141B41)');
-            document.documentElement.style.setProperty('--wb-bg', 'radial-gradient(#306bac, #141B41)');
-            document.documentElement.style.setProperty('--btns-bg-color', 'radial-gradient(#141B41, #306bac)');
-            document.body.style.background = 'radial-gradient(#306bac, #141B41)';
+        case 'green':
+            swalBackground = 'linear-gradient(135deg, #002a22, #004d40)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #002a22, #004d40)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #002a22, #004d40)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #002a22, #004d40)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#001d1a');
+            document.documentElement.style.setProperty('--right-msg-bg', '#003d2e');
+            document.documentElement.style.setProperty('--select-bg', '#002a22');
+            document.documentElement.style.setProperty('--tab-btn-active', '#004d40');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #002a22, #004d40)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #002a22, #004d40)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(0, 42, 34, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #002a22, #004d40)';
             selectTheme.selectedIndex = 3;
             break;
-        case 'red':
-            swalBackground = 'radial-gradient(#69140E, #3C1518)';
-            document.documentElement.style.setProperty('--body-bg', 'radial-gradient(#69140E, #3C1518)');
-            document.documentElement.style.setProperty('--transcription-bg', 'radial-gradient(#69140E, #3C1518)');
-            document.documentElement.style.setProperty('--msger-bg', 'radial-gradient(#69140E, #3C1518)');
-            document.documentElement.style.setProperty('--left-msg-bg', '#3C1518');
-            document.documentElement.style.setProperty('--right-msg-bg', '#69140E');
-            document.documentElement.style.setProperty('--select-bg', '#3C1518');
-            document.documentElement.style.setProperty('--tab-btn-active', '#69140E');
-            document.documentElement.style.setProperty('--settings-bg', 'radial-gradient(#69140E, #3C1518)');
-            document.documentElement.style.setProperty('--wb-bg', 'radial-gradient(#69140E, #3C1518)');
-            document.documentElement.style.setProperty('--btns-bg-color', 'radial-gradient(#69140E, #3C1518)');
-            document.body.style.background = 'radial-gradient(#69140E, #3C1518)';
+        case 'blue':
+            swalBackground = 'linear-gradient(135deg, #00274d, #004d80)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #00274d, #004d80)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #00274d, #004d80)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #00274d, #004d80)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#001f3f');
+            document.documentElement.style.setProperty('--right-msg-bg', '#003366');
+            document.documentElement.style.setProperty('--select-bg', '#00274d');
+            document.documentElement.style.setProperty('--tab-btn-active', '#004d80');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #00274d, #004d80)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #00274d, #004d80)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(0, 39, 77, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #00274d, #004d80)';
             selectTheme.selectedIndex = 4;
+            break;
+        case 'red':
+            swalBackground = 'linear-gradient(135deg, #2a0d0d, #4d1a1a)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #2a0d0d, #4d1a1a)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #2a0d0d, #4d1a1a)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #2a0d0d, #4d1a1a)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#2b0f0f');
+            document.documentElement.style.setProperty('--right-msg-bg', '#4d1a1a');
+            document.documentElement.style.setProperty('--select-bg', '#2a0d0d');
+            document.documentElement.style.setProperty('--tab-btn-active', '#4d1a1a');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #2a0d0d, #4d1a1a)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #2a0d0d, #4d1a1a)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(42, 13, 13, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #2a0d0d, #4d1a1a)';
+            selectTheme.selectedIndex = 5;
+            break;
+        case 'purple':
+            swalBackground = 'linear-gradient(135deg, #2a001d, #4d004a)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #2a001d, #4d004a)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #2a001d, #4d004a)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #2a001d, #4d004a)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#1b0014');
+            document.documentElement.style.setProperty('--right-msg-bg', '#3e002a');
+            document.documentElement.style.setProperty('--select-bg', '#2a001d');
+            document.documentElement.style.setProperty('--tab-btn-active', '#4d004a');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #2a001d, #4d004a)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #2a001d, #4d004a)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(42, 0, 29, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #2a001d, #4d004a)';
+            selectTheme.selectedIndex = 6;
+            break;
+        case 'orange':
+            swalBackground = 'linear-gradient(135deg, #3d1a00, #ff8c00)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #3d1a00, #ff8c00)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #3d1a00, #ff8c00)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #3d1a00, #ff8c00)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#2c0f00');
+            document.documentElement.style.setProperty('--right-msg-bg', '#ff8c00');
+            document.documentElement.style.setProperty('--select-bg', '#3d1a00');
+            document.documentElement.style.setProperty('--tab-btn-active', '#ff8c00');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #3d1a00, #ff8c00)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #3d1a00, #ff8c00)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(61, 26, 0, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #3d1a00, #ff8c00)';
+            selectTheme.selectedIndex = 7;
+            break;
+        case 'pink':
+            swalBackground = 'linear-gradient(135deg, #4d001d, #ff66b2)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #4d001d, #ff66b2)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #4d001d, #ff66b2)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #4d001d, #ff66b2)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#3e0016');
+            document.documentElement.style.setProperty('--right-msg-bg', '#ff66b2');
+            document.documentElement.style.setProperty('--select-bg', '#4d001d');
+            document.documentElement.style.setProperty('--tab-btn-active', '#ff66b2');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #4d001d, #ff66b2)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #4d001d, #ff66b2)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(77, 0, 29, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #4d001d, #ff66b2)';
+            selectTheme.selectedIndex = 8;
+            break;
+        case 'yellow':
+            swalBackground = 'linear-gradient(135deg, #4d3b00, #ffc107)';
+            document.documentElement.style.setProperty('--body-bg', 'linear-gradient(135deg, #4d3b00, #ffc107)');
+            document.documentElement.style.setProperty('--trx-bg', 'linear-gradient(135deg, #4d3b00, #ffc107)');
+            document.documentElement.style.setProperty('--msger-bg', 'linear-gradient(135deg, #4d3b00, #ffc107)');
+            document.documentElement.style.setProperty('--left-msg-bg', '#3b2d00');
+            document.documentElement.style.setProperty('--right-msg-bg', '#ffc107');
+            document.documentElement.style.setProperty('--select-bg', '#4d3b00');
+            document.documentElement.style.setProperty('--tab-btn-active', '#ffc107');
+            document.documentElement.style.setProperty('--settings-bg', 'linear-gradient(135deg, #4d3b00, #ffc107)');
+            document.documentElement.style.setProperty('--wb-bg', 'linear-gradient(135deg, #4d3b00, #ffc107)');
+            document.documentElement.style.setProperty('--btns-bg-color', 'rgba(77, 59, 0, 0.7)');
+            document.body.style.background = 'linear-gradient(135deg, #4d3b00, #ffc107)';
+            selectTheme.selectedIndex = 9;
             break;
         default:
             break;
-        //...
     }
     wbIsBgTransparent = false;
     if (rc) rc.isChatBgTransparent = false;
@@ -3980,14 +4338,13 @@ function showAbout() {
         imageUrl: image.about,
         customClass: { image: 'img-about' },
         position: 'center',
-        title: 'WebRTC SFU v1.4.51',
+        title: 'WebRTC SFU v1.5.28',
         html: `
         <br />
         <div id="about">
             <button 
                 id="support-button" 
                 data-umami-event="Support button" 
-                class="pulsate" 
                 onclick="window.open('https://codecanyon.net/user/miroslavpejic85')">
                 <i class="fas fa-heart"></i> 
                 Support
