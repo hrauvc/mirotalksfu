@@ -126,8 +126,6 @@ const corsOptions = {
     methods: config.server?.cors?.methods || ['GET', 'POST'],
 };
 
-console.log(corsOptions);
-
 const httpsServer = https.createServer(options, app);
 const io = socketIo(httpsServer, {
     maxHttpBufferSize: 1e7,
