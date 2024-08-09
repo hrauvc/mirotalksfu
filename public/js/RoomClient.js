@@ -9,7 +9,7 @@
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.5.28
+ * @version 1.5.46
  *
  */
 
@@ -42,6 +42,7 @@ const html = {
     pin: 'fas fa-map-pin',
     videoPrivacy: 'far fa-circle',
     expand: 'fas fa-ellipsis-vertical',
+    hideALL: 'fas fa-eye',
 };
 
 const icons = {
@@ -56,6 +57,7 @@ const icons = {
     lock: '<i class="fa-solid fa-lock"></i>',
     unlock: '<i class="fa-solid fa-lock-open"></i>',
     pitchBar: '<i class="fas fa-microphone-lines"></i>',
+    mirror: '<i class="fas fa-arrow-right-arrow-left"></i>',
     sounds: '<i class="fas fa-music"></i>',
     fileSend: '<i class="fa-solid fa-file-export"></i>',
     fileReceive: '<i class="fa-solid fa-file-import"></i>',
@@ -397,6 +399,10 @@ class RoomClient {
             .request('join', data)
             .then(async (room) => {
                 console.log('##### JOIN ROOM #####', room);
+                if (room === 'invalid') {
+                    console.log('00-WARNING ----> Invalid Room name! Path traversal pattern detected!');
+                    return this.roomInvalid();
+                }
                 if (room === 'notAllowed') {
                     console.log(
                         '00-WARNING ----> Room is Unauthorized for current user, please provide a valid room name for this user',
@@ -702,6 +708,8 @@ class RoomClient {
                         'Producer Transport disconnected',
                         'Check Your Network Connectivity (Restarted ICE)',
                         'center',
+                        false,
+                        true
                     );
                     */
                     break;
@@ -716,6 +724,8 @@ class RoomClient {
                         'Producer Transport failed',
                         'Check Your Network Connectivity',
                         'center',
+                        false,
+                        true,
                     );
                     break;
                 default:
@@ -785,6 +795,8 @@ class RoomClient {
                         'Consumer Transport disconnected',
                         'Check Your Network Connectivity (Restarted ICE)',
                         'center',
+                        false,
+                        true
                     );
                     */
                 case 'failed':
@@ -798,6 +810,8 @@ class RoomClient {
                         'Consumer Transport failed',
                         'Check Your Network Connectivity',
                         'center',
+                        false,
+                        true,
                     );
                     break;
                 default:
@@ -1624,6 +1638,30 @@ class RoomClient {
                     },
                 }; // video cam constraints ultra high bandwidth
                 break;
+            case '6k':
+                videoConstraints = {
+                    audio: false,
+                    video: {
+                        width: { exact: 6144 },
+                        height: { exact: 3456 },
+                        deviceId: deviceId,
+                        aspectRatio: 1.777,
+                        frameRate: frameRate,
+                    },
+                }; // video cam constraints Very ultra high bandwidth
+                break;
+            case '8k':
+                videoConstraints = {
+                    audio: false,
+                    video: {
+                        width: { exact: 7680 },
+                        height: { exact: 4320 },
+                        deviceId: deviceId,
+                        aspectRatio: 1.777,
+                        frameRate: frameRate,
+                    },
+                }; // video cam constraints Very ultra high bandwidth
+                break;
             default:
                 break;
         }
@@ -2209,7 +2247,7 @@ class RoomClient {
     }
 
     async handleConsumer(id, type, stream, peer_name, peer_info) {
-        let elem, vb, d, p, i, cm, au, pip, fs, ts, sf, sm, sv, gl, ban, ko, pb, pm, pv, pn;
+        let elem, vb, d, p, i, cm, au, pip, fs, ts, sf, sm, sv, gl, ban, ko, pb, pm, pv, pn, ha;
 
         let eDiv, eBtn, eVc; // expand buttons
 
@@ -2267,6 +2305,9 @@ class RoomClient {
                 pn = document.createElement('button');
                 pn.id = id + '__pin';
                 pn.className = html.pin;
+                ha = document.createElement('button');
+                ha.id = id + '__hideALL';
+                ha.className = html.hideALL + ' focusMode';
                 sf = document.createElement('button');
                 sf.id = id + '___' + remotePeerId + '___sendFile';
                 sf.className = html.sendFile;
@@ -2306,7 +2347,6 @@ class RoomClient {
                 pb.className = 'bar';
                 pb.style.height = '1%';
                 pm.appendChild(pb);
-
                 BUTTONS.consumerVideo.sendMessageButton && eVc.appendChild(sm);
                 BUTTONS.consumerVideo.sendFileButton && eVc.appendChild(sf);
                 BUTTONS.consumerVideo.sendVideoButton && eVc.appendChild(sv);
@@ -2325,6 +2365,7 @@ class RoomClient {
                     this.isVideoPictureInPictureSupported &&
                     vb.appendChild(pip);
                 BUTTONS.consumerVideo.fullScreenButton && this.isVideoFullScreenSupported && vb.appendChild(fs);
+                BUTTONS.consumerVideo.focusVideoButton && vb.appendChild(ha);
                 if (!this.isMobileDevice) vb.appendChild(pn);
                 d.appendChild(elem);
                 d.appendChild(i);
@@ -2338,6 +2379,7 @@ class RoomClient {
                 this.handleDD(elem.id, remotePeerId);
                 this.handleTS(elem.id, ts.id);
                 this.handleSF(sf.id);
+                this.handleHA(ha.id, d.id);
                 this.handleSM(sm.id, peer_name);
                 this.handleSV(sv.id);
                 BUTTONS.consumerVideo.muteVideoButton && this.handleCM(cm.id);
@@ -2351,12 +2393,22 @@ class RoomClient {
                 this.popupPeerInfo(p.id, peer_info);
                 this.checkPeerInfoStatus(peer_info);
                 if (!remoteIsScreen && remotePrivacyOn) this.setVideoPrivacyStatus(remotePeerId, remotePrivacyOn);
-                if (remoteIsScreen) pn.click();
-                this.sound('joined');
-                handleAspectRatio();
+                if (remoteIsScreen && !isHideALLVideosActive) pn.click();
+                if (isHideALLVideosActive) {
+                    isHideALLVideosActive = false;
+                    const children = this.videoMediaContainer.children;
+                    const btnsHA = document.querySelectorAll('.focusMode');
+                    for (let child of children) {
+                        child.style.display = 'block';
+                    }
+                    btnsHA.forEach((btn) => {
+                        btn.style.color = 'white';
+                    });
+                }
                 console.log('[addConsumer] Video-element-count', this.videoMediaContainer.childElementCount);
                 if (!this.isMobileDevice) {
                     this.setTippy(pn.id, 'Toggle Pin', 'bottom');
+                    this.setTippy(ha.id, 'Toggle Focus mode', 'bottom');
                     this.setTippy(pip.id, 'Toggle picture in picture', 'bottom');
                     this.setTippy(ts.id, 'Snapshot', 'bottom');
                     this.setTippy(sf.id, 'Send file', 'bottom');
@@ -2370,6 +2422,8 @@ class RoomClient {
                     this.setTippy(ko.id, 'Eject', 'bottom');
                 }
                 this.setPeerAudio(remotePeerId, remotePeerAudio);
+                handleAspectRatio();
+                this.sound('joined');
                 break;
             case mediaType.audio:
                 elem = document.createElement('audio');
@@ -2411,6 +2465,13 @@ class RoomClient {
         if (consumer_kind === 'video') {
             const d = this.getId(consumer_id + '__video');
             if (d) {
+                // Check if video is in focus-mode...
+                if (d.hasAttribute('focus-mode')) {
+                    const dhaBtn = this.getId(consumer_id + '__hideALL');
+                    if (dhaBtn) {
+                        dhaBtn.click();
+                    }
+                }
                 d.parentNode.removeChild(d);
                 //alert(this.pinnedVideoPlayerId + '==' + consumer_id);
                 if (this.isVideoPinned && this.pinnedVideoPlayerId == consumer_id) {
@@ -3516,6 +3577,7 @@ class RoomClient {
 
     setVideoPrivacyStatus(elemName, privacy) {
         let videoPlayer = this.getName(elemName)[0];
+        if (!videoPlayer) return;
         if (privacy) {
             videoPlayer.classList.remove('videoDefault');
             videoPlayer.classList.add('videoCircle');
@@ -4835,7 +4897,7 @@ class RoomClient {
         for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
             const chunk = arrayBuffer.slice(chunkIndex * chunkSize, (chunkIndex + 1) * chunkSize);
             try {
-                await axios.post(
+                const response = await axios.post(
                     `${this.recording.recSyncServerEndpoint}/recSync?fileName=` + rc.recServerFileName,
                     chunk,
                     {
@@ -4844,8 +4906,25 @@ class RoomClient {
                         },
                     },
                 );
+                console.log('Chunk synced successfully:', response.data);
             } catch (error) {
-                console.error('Error syncing chunk:', error.message);
+                let errorMessage = 'Recording stopped! ';
+                if (error.response) {
+                    errorMessage += error.response.data.message;
+                    console.error('Error syncing chunk', {
+                        status_code: error.response.status,
+                        response_data: error.response.data,
+                        response_headers: error.response.headers,
+                    });
+                } else if (error.request) {
+                    console.error('Error syncing chunk: No response received', { request_details: error.request });
+                } else {
+                    errorMessage += error.message;
+                    console.error('Error syncing chunk:', error.message);
+                }
+                userLog('warning', errorMessage, 'top-end', 3000);
+                rc.stopRecording();
+                rc.saveLastRecordingInfo('<br/><span class="red">' + errorMessage + '.</span>');
             }
         }
     }
@@ -5793,6 +5872,9 @@ class RoomClient {
         const status = active ? 'ON' : 'OFF';
         this.sound('switch');
         switch (action) {
+            case 'toggleVideoMirror':
+                this.userLog('info', `${icons.mirror} Video mirror ${status}`, 'top-end');
+                break;
             case 'pitchBar':
                 this.userLog('info', `${icons.pitchBar} Audio pitch bar ${status}`, 'top-end');
                 break;
@@ -6095,6 +6177,23 @@ class RoomClient {
     // HANDLE ROOM ACTION
     // ####################################################
 
+    roomInvalid() {
+        this.sound('alert');
+        Swal.fire({
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            background: swalBackground,
+            imageUrl: image.forbidden,
+            title: 'Oops, Room not valid',
+            text: 'Invalid Room name! Path traversal pattern detected!',
+            confirmButtonText: `OK`,
+            showClass: { popup: 'animate__animated animate__fadeInDown' },
+            hideClass: { popup: 'animate__animated animate__fadeOutUp' },
+        }).then(() => {
+            openURL(`/`);
+        });
+    }
+
     userRoomNotAllowed() {
         this.sound('alert');
         Swal.fire({
@@ -6233,31 +6332,52 @@ class RoomClient {
     // ####################################################
 
     handleAudioVolume(data) {
-        if (!isPitchBarEnabled) return;
-        let peerId = data.peer_id;
-        let peerName = data.peer_name;
-        let producerAudioBtn = this.getId(peerId + '_audio');
-        let consumerAudioBtn = this.getId(peerId + '__audio');
-        let pbProducer = this.getId(peerId + '_pitchBar');
-        let pbConsumer = this.getId(peerId + '__pitchBar');
-        let audioVolume = data.audioVolume * 10; //10-100
-        let audioColor = 'lime';
-        //console.log('Active speaker', { peer_name: peerName, peer_id: peerId, audioVolume: audioVolume });
-        if ([50, 60, 70].includes(audioVolume)) audioColor = 'orange';
-        if ([80, 90, 100].includes(audioVolume)) audioColor = 'red';
-        if (producerAudioBtn) producerAudioBtn.style.color = audioColor;
-        if (consumerAudioBtn) consumerAudioBtn.style.color = audioColor;
-        if (pbProducer) pbProducer.style.backgroundColor = audioColor;
-        if (pbConsumer) pbConsumer.style.backgroundColor = audioColor;
-        if (pbProducer) pbProducer.style.height = audioVolume + '%';
-        if (pbConsumer) pbConsumer.style.height = audioVolume + '%';
+        //console.log('Active speaker', data);
+
+        const { peer_id, peer_name, audioVolume } = data;
+        const audioVolumeTmp = audioVolume * 10; //10-100
+
+        let audioColorTmp = 'lime';
+        if ([50, 60, 70].includes(audioVolumeTmp)) audioColorTmp = 'orange';
+        if ([80, 90, 100].includes(audioVolumeTmp)) audioColorTmp = 'red';
+
+        if (!isPitchBarEnabled) {
+            const peerVideo = this.getName(peer_id)[0];
+            const peerAvatarImg = this.getId(peer_id + '__img');
+            if (peerAvatarImg) {
+                this.applyBoxShadowEffect(peerAvatarImg, audioColorTmp, 200);
+            }
+            if (peerVideo && peerVideo.classList.contains('videoCircle')) {
+                this.applyBoxShadowEffect(peerVideo, audioColorTmp, 200);
+            }
+            return;
+        }
+        const producerAudioBtn = this.getId(peer_id + '_audio');
+        const consumerAudioBtn = this.getId(peer_id + '__audio');
+        const pbProducer = this.getId(peer_id + '_pitchBar');
+        const pbConsumer = this.getId(peer_id + '__pitchBar');
+        if (producerAudioBtn) producerAudioBtn.style.color = audioColorTmp;
+        if (consumerAudioBtn) consumerAudioBtn.style.color = audioColorTmp;
+        if (pbProducer) pbProducer.style.backgroundColor = audioColorTmp;
+        if (pbConsumer) pbConsumer.style.backgroundColor = audioColorTmp;
+        if (pbProducer) pbProducer.style.height = audioVolumeTmp + '%';
+        if (pbConsumer) pbConsumer.style.height = audioVolumeTmp + '%';
         setTimeout(function () {
-            audioColor = 'white';
-            if (producerAudioBtn) producerAudioBtn.style.color = audioColor;
-            if (consumerAudioBtn) consumerAudioBtn.style.color = audioColor;
+            audioColorTmp = 'white';
+            if (producerAudioBtn) producerAudioBtn.style.color = audioColorTmp;
+            if (consumerAudioBtn) consumerAudioBtn.style.color = audioColorTmp;
             if (pbProducer) pbProducer.style.height = '0%';
             if (pbConsumer) pbConsumer.style.height = '0%';
         }, 200);
+    }
+
+    applyBoxShadowEffect(element, color, delay = 200) {
+        if (element) {
+            element.style.boxShadow = `0 0 20px ${color}`;
+            setTimeout(() => {
+                element.style.boxShadow = 'none';
+            }, delay);
+        }
     }
 
     // ####################################################
@@ -6351,6 +6471,39 @@ class RoomClient {
     // ####################################################
     // HANDLE VIDEO
     // ###################################################
+
+    handleHA(uid, videoContainerId) {
+        let btnHa = this.getId(uid);
+        if (btnHa) {
+            btnHa.addEventListener('click', (e) => {
+                if (isHideMeActive) {
+                    return this.userLog(
+                        'warning',
+                        'To use this feature, please toggle Hide self view before',
+                        'top-end',
+                        6000,
+                    );
+                }
+                const videoContainer = this.getId(videoContainerId);
+                isHideALLVideosActive = !isHideALLVideosActive;
+                e.target.style.color = isHideALLVideosActive ? 'lime' : 'white';
+                if (isHideALLVideosActive) {
+                    videoContainer.style.width = '100%';
+                    videoContainer.style.height = '100%';
+                    videoContainer.setAttribute('focus-mode', 'true');
+                } else {
+                    resizeVideoMedia();
+                    videoContainer.removeAttribute('focus-mode');
+                }
+                const children = this.videoMediaContainer.children;
+                for (let child of children) {
+                    if (child.id != videoContainerId) {
+                        child.style.display = isHideALLVideosActive ? 'none' : 'block';
+                    }
+                }
+            });
+        }
+    }
 
     handleCM(uid) {
         const words = uid.split('___');
@@ -7490,6 +7643,10 @@ class RoomClient {
             })
             .catch((err) => {
                 console.error('Video AI getAvatarList error:', err);
+                this.userLog('warning', 'Video AI getAvatarList error:\n' + err, 'top-end', 6000);
+                this.getId('tabVideoAI').style.display = 'none';
+                this.getId('tabVideoAIBtn').style.display = 'none';
+                this.getId('tabRoomBtn').click();
             });
     }
 
@@ -8058,6 +8215,13 @@ class RoomClient {
     // RTMP common
     // ##############################################
 
+    openRTMPStreamer() {
+        const color = encodeURIComponent(themeCustom.color);
+        const options = `&t=${selectTheme.value}` + (themeCustom.keep ? `&c=${color}` : '');
+        const url = `/rtmp?v=${videoSelect.value}&a=${microphoneSelect.value}${options}`;
+        openURL(url, true);
+    }
+
     isRTMPVideoSupported(video) {
         if (video.endsWith('.mp4') || video.endsWith('.webm')) return true;
         return false;
@@ -8116,6 +8280,60 @@ class RoomClient {
                 copyToClipboard(rtmp);
             }
         });
+    }
+
+    // ####################################################
+    // ROOM SNAPSHOT WINDOW/SCREEN/TAB
+    // ####################################################
+
+    async snapshotRoom() {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        const video = document.createElement('video');
+
+        try {
+            this.sound('snapshot');
+            const captureStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+            });
+
+            video.srcObject = captureStream;
+            video.onloadedmetadata = () => {
+                video.play();
+            };
+
+            // Wait for the video to start playing
+            video.onplay = async () => {
+                // Sleep some ms
+                await this.sleep(1000);
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // Create a link element to download the image
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = 'Room_' + this.room_id + '_' + getDataTimeString() + '_snapshot.png';
+                link.click();
+
+                // Stop all video tracks to release the capture stream
+                captureStream.getTracks().forEach((track) => track.stop());
+
+                // Clean up: remove references to avoid memory leaks
+                video.srcObject = null;
+                canvas.width = 0;
+                canvas.height = 0;
+            };
+        } catch (err) {
+            console.error('Error: ' + err);
+            this.userLog('error', 'Snapshot room error ' + err.message, 'top-end', 6000);
+        }
+    }
+
+    toggleVideoMirror() {
+        const peerVideo = this.getName(this.peer_id)[0];
+        if (peerVideo) peerVideo.classList.toggle('mirror');
     }
 
     sleep(ms) {

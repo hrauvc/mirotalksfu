@@ -17,7 +17,7 @@ function getIPv4() {
     return '0.0.0.0'; // Default to 0.0.0.0 if no external IPv4 address found
 }
 
-const IPv4 = getIPv4();
+const IPv4 = getIPv4(); // Replace it with the Server Public IPv4 in production.
 
 module.exports = {
     console: {
@@ -352,6 +352,7 @@ module.exports = {
                 raiseHandButton: true,
                 transcriptionButton: true,
                 whiteboardButton: true,
+                snapshotRoomButton: true,
                 emojiRoomButton: true,
                 settingsButton: true,
                 aboutButton: false, // Please keep me always visible, thank you!
@@ -382,6 +383,7 @@ module.exports = {
                 videoPictureInPicture: true,
                 fullScreenButton: true,
                 snapShotButton: true,
+                focusVideoButton: true,
                 sendMessageButton: true,
                 sendFileButton: true,
                 sendVideoButton: true,

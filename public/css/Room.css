@@ -442,6 +442,10 @@ th {
     width: 180px;
 }
 
+#VideoMirrorDiv {
+    margin-top: 10px;
+}
+
 /*--------------------------------------------------------------
 # RTMP settings
 --------------------------------------------------------------*/
@@ -509,10 +513,10 @@ th {
 }
 
 #refreshVideoFiles {
-    float: right;
     cursor: pointer;
     border-radius: 5px;
-    background: var(--body-bg) !important;
+    border: var(--border);
+    background: var(--btns-bg-color) !important;
 }
 #refreshVideoFiles:hover {
     background: var(--select-bg) !important;
@@ -532,15 +536,21 @@ th {
     background: var(--btns-bg-color) !important;
 }
 
+#copyRtmpUrlButton {
+    height: 40px;
+    margin-left: 5px;
+    border: var(--border);
+}
+
 /*--------------------------------------------------------------
 # Dropdown menu
 --------------------------------------------------------------*/
 
 .dropdown-menu {
-    right: 0;
-    /* background: var(--select-bg) !important; */
+    position: fixed;
+    /* max-height: 300px; */
     border: none;
-    border-radius: 5px;
+    border-radius: 10px !important;
     background: var(--body-bg) !important;
     box-shadow: var(--box-shadow);
     overflow-y: auto;
@@ -548,13 +558,12 @@ th {
 }
 
 .dropdown-menu button {
-    display: flex;
+    width: 240px;
+    padding: 8px 16px;
     align-items: center;
     justify-content: flex-start;
-    width: 220px;
     font-size: 0.8em;
     text-align: left;
-    padding: 8px 16px;
     border: none;
     background: none;
     cursor: pointer;
@@ -964,7 +973,7 @@ th {
 
 .swal2-popup {
     /* border: var(--border) !important; */
-    border: 0.5px solid rgb(255 255 255 / 32%) !important;
+    /* border: 0.5px solid rgb(255 255 255 / 32%) !important; */
     box-shadow: var(--box-shadow) !important;
 }
 
@@ -992,7 +1001,7 @@ th {
 }
 
 .swal2-timer-progress-bar-container {
-    background: #376df9;
+    background: var(--body-bg);
 }
 
 .img-about {
@@ -1496,7 +1505,7 @@ hr {
     left: 0;
     padding: 10px;
     width: 100%;
-    /* height: 100%; */
+    height: 100%;
     color: #ffffff;
     justify-content: center; /* Center horizontally */
     align-items: center; /* Center vertically */

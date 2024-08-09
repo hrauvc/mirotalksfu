@@ -10,7 +10,6 @@
 dependencies: {
     @ffmpeg-installer/ffmpeg: https://www.npmjs.com/package/@ffmpeg-installer/ffmpeg
     @sentry/node            : https://www.npmjs.com/package/@sentry/node
-    @sentry/integrations    : https://www.npmjs.com/package/@sentry/integrations
     axios                   : https://www.npmjs.com/package/axios
     body-parser             : https://www.npmjs.com/package/body-parser
     compression             : https://www.npmjs.com/package/compression
@@ -44,7 +43,7 @@ dependencies: {
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.5.28
+ * @version 1.5.46
  *
  */
 
@@ -69,12 +68,12 @@ const Room = require('./Room');
 const Peer = require('./Peer');
 const ServerApi = require('./ServerApi');
 const Logger = require('./Logger');
+const Validator = require('./Validator');
 const log = new Logger('Server');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = yaml.load(fs.readFileSync(path.join(__dirname, '/../api/swagger.yaml'), 'utf8'));
 const Sentry = require('@sentry/node');
-const { CaptureConsole } = require('@sentry/integrations');
 const restrictAccessByIP = require('./middleware/IpWhitelist.js');
 const packageJson = require('../../package.json');
 
@@ -164,7 +163,7 @@ if (sentryEnabled) {
     Sentry.init({
         dsn: sentryDSN,
         integrations: [
-            new CaptureConsole({
+            Sentry.captureConsoleIntegration({
                 // ['log', 'info', 'warn', 'error', 'debug', 'assert']
                 levels: ['error'],
             }),
@@ -177,7 +176,7 @@ if (sentryEnabled) {
     log.warn('test-warning');
     log.error('test-error');
     log.debug('test-debug');
-    */
+*/
 }
 
 // Stats
@@ -324,7 +323,6 @@ function startServer() {
     app.use(express.static(dir.public));
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(bodyParser.raw({ type: 'video/webm', limit: '50mb' })); // handle raw binary data
-    app.use(bodyParser.raw({ type: 'application/octet-stream', limit: '50mb' })); // handle raw binary data
     app.use(restApi.basePath + '/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument)); // api docs
 
     // IP Whitelist check ...
@@ -483,6 +481,12 @@ function startServer() {
                 req.query,
             );
 
+            if (!Validator.isValidRoomName(room)) {
+                return res.status(400).json({
+                    message: 'Invalid Room name!\nPath traversal pattern detected!',
+                });
+            }
+
             let peerUsername = '';
             let peerPassword = '';
             let isPeerValid = false;
@@ -552,14 +556,14 @@ function startServer() {
     // join room by id
     app.get('/join/:roomId', (req, res) => {
         //
-        const allowRoomAccess = isAllowedRoomAccess(
-            '/join/:roomId',
-            req,
-            hostCfg,
-            authHost,
-            roomList,
-            req.params.roomId,
-        );
+        const roomId = req.params.roomId;
+
+        if (!Validator.isValidRoomName(roomId)) {
+            log.warn('/join/:roomId invalid', roomId);
+            return res.redirect('/');
+        }
+
+        const allowRoomAccess = isAllowedRoomAccess('/join/:roomId', req, hostCfg, authHost, roomList, roomId);
 
         if (allowRoomAccess) {
             if (hostCfg.protected) authHost.setRoomActive();
@@ -670,13 +674,26 @@ function startServer() {
         // Store recording...
         if (serverRecordingEnabled) {
             //
-            const { fileName } = req.query;
-
-            if (!fileName) {
-                return res.status(400).send('Filename not provided');
-            }
-
             try {
+                const { fileName } = req.query;
+
+                if (!fileName) {
+                    return res.status(400).send('Filename not provided');
+                }
+
+                if (!Validator.isValidRecFileNameFormat(fileName)) {
+                    log.warn('[RecSync] - Invalid file name', fileName);
+                    return res.status(400).send('Invalid file name');
+                }
+
+                const parts = fileName.split('_');
+                const roomId = parts[1];
+
+                if (!roomList.has(roomId)) {
+                    log.warn('[RecSync] - RoomID not exists in filename', fileName);
+                    return res.status(400).send('Invalid file name');
+                }
+
                 if (!fs.existsSync(dir.rec)) {
                     fs.mkdirSync(dir.rec, { recursive: true });
                 }
@@ -686,16 +703,16 @@ function startServer() {
                 req.pipe(writeStream);
 
                 writeStream.on('error', (err) => {
-                    log.error('Error writing to file:', err.message);
+                    log.error('[RecSync] - Error writing to file:', err.message);
                     res.status(500).send('Internal Server Error');
                 });
 
                 writeStream.on('finish', () => {
-                    log.debug('File saved successfully:', fileName);
+                    log.debug('[RecSync] - File saved successfully:', fileName);
                     res.status(200).send('File uploaded successfully');
                 });
             } catch (err) {
-                log.error('Error processing upload', err.message);
+                log.error('[RecSync] - Error processing upload', err.message);
                 res.status(500).send('Internal Server Error');
             }
         }
@@ -1291,6 +1308,11 @@ function startServer() {
             const data = checkXSS(dataObject);
 
             log.info('User joined', data);
+
+            if (!Validator.isValidRoomName(socket.room_id)) {
+                log.warn('[Join] - Invalid room name', socket.room_id);
+                return cb('invalid');
+            }
 
             const room = roomList.get(socket.room_id);
 
