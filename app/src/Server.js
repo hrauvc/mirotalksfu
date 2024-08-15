@@ -2927,6 +2927,7 @@ function startServer() {
                     password: password,
                     api_secret_key: hostCfg.users_api_secret_key,
                 });
+                console.log(response);
                 return response.data && response.data.message === true;
             } catch (error) {
                 log.error('AXIOS isAuthPeer error', error.message);
