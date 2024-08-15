@@ -1335,8 +1335,6 @@ function startServer() {
 
                         const { username, password, presenter } = checkXSS(decodeToken(peer_token));
 
-                        console.log('JWT', { username, password, presenter });
-
                         const isPeerValid = await isAuthPeer(username, password);
 
                         if (!isPeerValid) {
@@ -1347,10 +1345,7 @@ function startServer() {
                         is_presenter =
                             presenter === '1' ||
                             presenter === 'true' ||
-                            presenter === true ||
                             (config.presenters.join_first && room.getPeers().size === 0);
-
-                        console.log('Is presenter', username, is_presenter);
 
                         log.debug('[Join] - HOST PROTECTED - USER AUTH check peer', {
                             ip: peer_ip,
@@ -2927,40 +2922,22 @@ function startServer() {
     async function isAuthPeer(username, password) {
         if (hostCfg.users_from_db && hostCfg.users_api_endpoint) {
             try {
-                // Log de la URL y los datos que se van a enviar
-                console.log('Making request to:', hostCfg.users_api_endpoint);
-                console.log('Request data:', {
-                    email: username,
-                    password: password,
-                    api_secret_key: hostCfg.users_api_secret_key,
-                });
-    
                 const response = await axios.post(hostCfg.users_api_endpoint, {
                     email: username,
                     password: password,
                     api_secret_key: hostCfg.users_api_secret_key,
                 });
-    
-                // Log de la respuesta completa
-                console.log('Response status:', response.status);
-                console.log('Response headers:', response.headers);
-                console.log('Response data:', response.data);
-    
-                return response.data && response.data.status === 'success';
+                return response.data && response.data.message === true;
             } catch (error) {
-                // Log detallado en caso de error
-                console.error('AXIOS isAuthPeer error message:', error.message);
-                console.error('AXIOS isAuthPeer error response:', error.response ? error.response.data : 'No response data');
-                console.error('AXIOS isAuthPeer error status:', error.response ? error.response.status : 'No status code');
+                log.error('AXIOS isAuthPeer error', error.message);
                 return false;
             }
         } else {
-            console.log('Using local user validation');
             return (
                 hostCfg.users && hostCfg.users.some((user) => user.username === username && user.password === password)
             );
         }
-    }    
+    }
 
     async function isValidToken(token) {
         return new Promise((resolve, reject) => {
