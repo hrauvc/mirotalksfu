@@ -1347,7 +1347,10 @@ function startServer() {
                         is_presenter =
                             presenter === '1' ||
                             presenter === 'true' ||
+                            presenter === true ||
                             (config.presenters.join_first && room.getPeers().size === 0);
+
+                        console.log('Is presenter', username, is_presenter);
 
                         log.debug('[Join] - HOST PROTECTED - USER AUTH check peer', {
                             ip: peer_ip,
