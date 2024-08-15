@@ -1335,6 +1335,8 @@ function startServer() {
 
                         const { username, password, presenter } = checkXSS(decodeToken(peer_token));
 
+                        console.log('JWT', { username, password, presenter });
+
                         const isPeerValid = await isAuthPeer(username, password);
 
                         if (!isPeerValid) {
