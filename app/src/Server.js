@@ -2941,7 +2941,7 @@ function startServer() {
                 console.log('Response headers:', response.headers);
                 console.log('Response data:', response.data);
     
-                return response.data && response.data.message === true;
+                return response.data && response.data.status === 'success';
             } catch (error) {
                 // Log detallado en caso de error
                 console.error('AXIOS isAuthPeer error message:', error.message);
