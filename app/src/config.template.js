@@ -176,10 +176,25 @@ module.exports = {
             {
                 username: 'a5dfb1b0-1b1b-4b1b-8b1b-1bsdfb',
                 password: 'gf$fs4-4afdaa4($vfcd4%)MF(/',
+                displayname: 'username displayname',
+                allowed_rooms: ['*'],
             },
             {
                 username: 'fa-d4sg5sdg-sd54bw-d5j456-4j5fd',
                 password: 'f4$HDFH5bvqw438b5234',
+                displayname: 'username displayname',
+                allowed_rooms: ['*'],
+            },
+            {
+                username: 'username2',
+                password: 'password2',
+                displayname: 'username2 displayname',
+                allowed_rooms: ['room1', 'room2'],
+            },
+            {
+                username: 'username3',
+                password: 'password3',
+                displayname: 'username3 displayname',
             },
             //...
         ],
@@ -349,6 +364,7 @@ module.exports = {
                 swapCameraButton: true,
                 chatButton: true,
                 pollButton: true,
+                editorButton: true,
                 raiseHandButton: true,
                 transcriptionButton: true,
                 whiteboardButton: true,
@@ -458,6 +474,7 @@ module.exports = {
         worker: {
             rtcMinPort: 40000,
             rtcMaxPort: 40100,
+            disableLiburing: false, // https://github.com/axboe/liburing
             logLevel: 'error',
             logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp', 'rtx', 'bwe', 'score', 'simulcast', 'svc', 'sctp'],
         },

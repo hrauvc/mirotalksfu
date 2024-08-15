@@ -43,7 +43,7 @@ dependencies: {
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.5.46
+ * @version 1.5.58
  *
  */
 
@@ -1197,7 +1197,7 @@ function startServer() {
     async function createWorkers() {
         const { numWorkers } = config.mediasoup;
 
-        const { logLevel, logTags, rtcMinPort, rtcMaxPort } = config.mediasoup.worker;
+        const { logLevel, logTags, rtcMinPort, rtcMaxPort, disableLiburing } = config.mediasoup.worker;
 
         log.info('WORKERS:', numWorkers);
 
@@ -1208,6 +1208,7 @@ function startServer() {
                 logTags: logTags,
                 rtcMinPort: rtcMinPort,
                 rtcMaxPort: rtcMaxPort,
+                disableLiburing: disableLiburing,
             });
 
             if (webRtcServerActive) {
@@ -2633,6 +2634,42 @@ function startServer() {
             }
         });
 
+        // Room collaborative editor
+
+        socket.on('editorChange', (dataObject) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            //const data = checkXSS(dataObject);
+            const data = dataObject;
+
+            const room = roomList.get(socket.room_id);
+
+            room.broadCast(socket.id, 'editorChange', data);
+        });
+
+        socket.on('editorActions', (dataObject) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            const data = checkXSS(dataObject);
+
+            const room = roomList.get(socket.room_id);
+
+            log.debug('editorActions', data);
+
+            room.broadCast(socket.id, 'editorActions', data);
+        });
+
+        socket.on('editorUpdate', (dataObject) => {
+            if (!roomList.has(socket.room_id)) return;
+
+            //const data = checkXSS(dataObject);
+            const data = dataObject;
+
+            const room = roomList.get(socket.room_id);
+
+            room.broadCast(socket.id, 'editorUpdate', data);
+        });
+
         socket.on('disconnect', async () => {
             if (!roomList.has(socket.room_id)) return;
 
@@ -3004,7 +3041,9 @@ function startServer() {
     }
 
     function isRoomAllowedForUser(message, username, room) {
-        log.debug('isRoomAllowedForUser ------>', { message, username, room });
+        const logData = { message, username, room };
+
+        log.debug('isRoomAllowedForUser ------>', logData);
 
         const isOIDCEnabled = config.oidc && config.oidc.enabled;
 
@@ -3016,7 +3055,7 @@ function startServer() {
                 return true;
             }
 
-            const user = hostCfg.users.find((user) => user.username === username);
+            const user = hostCfg.users.find((user) => user.displayname === username || user.username === username);
 
             if (!isOIDCEnabled && !user) {
                 log.debug('isRoomAllowedForUser - user not found', username);
@@ -3026,8 +3065,7 @@ function startServer() {
             if (
                 isOIDCEnabled ||
                 !user.allowed_rooms ||
-                user.allowed_rooms.includes('*') ||
-                user.allowed_rooms.includes(room)
+                (user.allowed_rooms && (user.allowed_rooms.includes('*') || user.allowed_rooms.includes(room)))
             ) {
                 log.debug('isRoomAllowedForUser - user room allowed', room);
                 return true;
