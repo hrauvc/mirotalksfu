@@ -59,6 +59,8 @@ dev dependencies: {
  *
  */
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const express = require('express');
 const { auth, requiresAuth } = require('express-openid-connect');
 const cors = require('cors');
@@ -974,6 +976,8 @@ function startServer() {
 
     // AWS Upload
     app.post([restApi.basePath + '/s3-upload'], (req, res) => {
+
+        console.log('AWS Upload start'); 
         // Check if endpoint allowed
         if (restApi.allowed && !restApi.allowed.s3Upload) {
             return res.status(403).json({
@@ -994,10 +998,15 @@ function startServer() {
         const outputFileName = fileName.replace(path.extname(fileName), '.mp4');
         const outputPath = path.join(dir.rec, outputFileName);
 
+        console.log('AWS Upload', { fileName, filePath, outputFileName, outputPath });
+
         // Comprueba si el archivo existe
         if (!fs.existsSync(filePath)) {
             return res.status(404).send('File not found');
         }
+
+        console.log('AWS Upload - File exists');
+        console.log('Start conversion');
 
         ffmpeg(filePath)
             .output(outputPath)

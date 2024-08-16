@@ -5180,7 +5180,7 @@ class RoomClient {
         const roomName = this.room_id.trim();
         const role = this.peer_info.peer_presenter  ? 'presenter' : 'participant';
         const peerUuid = this.peer_uuid;
-        return `Rec_${role}_${roomName}_${peerUuid}.webm`;
+        return `Rec_${roomName}_${role}_${peerUuid}.webm`;
     }
 
     handleMediaRecorderStart(evt) {
