@@ -441,6 +441,7 @@ function startServer() {
 
     // main page
     app.get(['/'], OIDCAuth, (req, res) => {
+        res.sendFile(views.notFound);
         //log.debug('/ - hostCfg ----->', hostCfg);
         if ((!OIDC.enabled && hostCfg.protected && !hostCfg.authenticated) || authHost.isRoomActive()) {
             const ip = getIP(req);
@@ -567,7 +568,6 @@ function startServer() {
 
     // join room by id
     app.get('/join/:roomId', (req, res) => {
-        
         // Deshabilitar acceso a la sala por id
         res.sendFile(views.notFound);
         //
@@ -978,15 +978,14 @@ function startServer() {
 
     // AWS Upload
     app.post([restApi.basePath + '/s3-upload'], (req, res) => {
-
-        console.log('AWS Upload start'); 
+        console.log('AWS Upload start');
         // Check if endpoint allowed
         if (restApi.allowed && !restApi.allowed.s3Upload) {
             return res.status(403).json({
                 error: 'This endpoint has been disabled. Please contact the administrator for further information.',
             });
         }
-    
+
         // Check if user was authorized for the api call
         const { host, authorization } = req.headers;
         const api = new ServerApi(host, authorization);
@@ -994,7 +993,7 @@ function startServer() {
             log.debug('Upload Recording to S3 - Unauthorized', { header: req.headers });
             return res.status(403).json({ error: 'Unauthorized!' });
         }
-    
+
         const { fileName } = req.query;
         const filePath = path.join(dir.rec, fileName);
         const outputFileName = fileName.replace(path.extname(fileName), '.mp4');
@@ -1012,7 +1011,7 @@ function startServer() {
 
         ffmpeg(filePath)
             .output(outputPath)
-            .on('end', function() {
+            .on('end', function () {
                 console.log('Conversion Successful');
 
                 const fileContent = fs.readFileSync(outputPath);
@@ -1024,20 +1023,20 @@ function startServer() {
                 };
 
                 // Sube el archivo a S3
-                s3.upload(params, function(err, data) {
+                s3.upload(params, function (err, data) {
                     if (err) {
                         log.error('Error uploading file to S3:', err.message);
                         return res.status(500).send('Error uploading file');
                     }
                     // Devuelve la URL del archivo subido
-                    res.json({ 
+                    res.json({
                         url: data.Location,
-                        path: params.Key
+                        path: params.Key,
                     });
                     log.debug('File uploaded successfully to S3:', { fileName: outputFileName, url: data.Location });
                 });
             })
-            .on('error', function(err) {
+            .on('error', function (err) {
                 console.log('Error converting file:', err.message);
                 res.status(500).send('Error processing file');
             })
@@ -1051,7 +1050,7 @@ function startServer() {
                 error: 'This endpoint has been disabled. Please contact the administrator for further information.',
             });
         }
-    
+
         // Chequea si el usuario fue autorizado para la llamada a la API
         const { host, authorization } = req.headers;
         const api = new ServerApi(host, authorization);
@@ -1061,19 +1060,19 @@ function startServer() {
         }
 
         console.log(req.body);
-    
+
         const { objectPath } = req.query; // La ruta del objeto en el bucket de S3, por ejemplo "bootcamps/rec/miArchivo.mp3"
-    
+
         if (!objectPath) {
             return res.status(400).send('Object path not provided');
         }
-    
+
         const params = {
             Bucket: config.aws.bucket, // El nombre de tu bucket en S3
             Key: objectPath, // La ruta del objeto en el bucket
-            Expires: 60 * 5 // Tiempo en segundos hasta que la URL expire, por ejemplo 5 minutos
+            Expires: 60 * 5, // Tiempo en segundos hasta que la URL expire, por ejemplo 5 minutos
         };
-    
+
         // Genera la URL autofirmada
         s3.getSignedUrl('getObject', params, (err, url) => {
             if (err) {
@@ -1380,7 +1379,7 @@ function startServer() {
                         //data.peer_info.presenter = is_presenter;
                         data.peer_info.peer_presenter = is_presenter;
 
-                        console.log('Is presenter', is_presenter);  
+                        console.log('Is presenter', is_presenter);
 
                         log.debug('[Join] - HOST PROTECTED - USER AUTH check peer', {
                             ip: peer_ip,
@@ -1445,7 +1444,7 @@ function startServer() {
                 peer_uuid: peer_uuid,
                 is_presenter: is_presenter,
             };
-            
+
             // first we check if the username match the presenters username
             if (config.presenters && config.presenters.list && config.presenters.list.includes(peer_name)) {
                 presenters[socket.room_id][socket.id] = presenter;
