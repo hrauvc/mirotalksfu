@@ -26,6 +26,7 @@ module.exports = class Logger {
     }
 
     debug(msg, op = '') {
+        return;
         if (this.debugOn) {
             this.timeEnd = Date.now();
             this.timeElapsedMs = this.getFormatTime(Math.floor(this.timeEnd - this.timeStart));
@@ -39,10 +40,12 @@ module.exports = class Logger {
     }
 
     log(msg, op = '') {
+        return;
         console.log('[' + this.getDateTime() + '] [' + this.appName + '] ' + msg, util.inspect(op, options));
     }
 
     info(msg, op = '') {
+        return;
         console.info(
             '[' + this.getDateTime() + '] [' + this.appName + '] ' + colors.green(msg),
             util.inspect(op, options),
@@ -50,6 +53,7 @@ module.exports = class Logger {
     }
 
     warn(msg, op = '') {
+        return;
         console.warn(
             '[' + this.getDateTime() + '] [' + this.appName + '] ' + colors.yellow(msg),
             util.inspect(op, options),
@@ -57,6 +61,7 @@ module.exports = class Logger {
     }
 
     error(msg, op = '') {
+        return;
         console.error(
             '[' + this.getDateTime() + '] [' + this.appName + '] ' + colors.red(msg),
             util.inspect(op, options),

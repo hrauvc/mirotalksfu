@@ -59,7 +59,7 @@ dev dependencies: {
  *
  */
 
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const express = require('express');
 const { auth, requiresAuth } = require('express-openid-connect');
@@ -294,6 +294,7 @@ if (!announcedAddress && IPv4 === '0.0.0.0') {
         },
     );
 } else {
+    console.log('Announced Address:', announcedAddress);
     startServer();
 }
 
@@ -486,8 +487,6 @@ function startServer() {
         if (Object.keys(req.query).length > 0) {
             //log.debug('/join/params - hostCfg ----->', hostCfg);
 
-            log.debug('Direct Join', req.query);
-
             // http://localhost:3010/join?room=test&roomPassword=0&name=mirotalksfu&audio=1&video=1&screen=0&hide=0&notify=1
             // http://localhost:3010/join?room=test&roomPassword=0&name=mirotalksfu&audio=1&video=1&screen=0&hide=0&notify=0&token=token
 
@@ -515,8 +514,6 @@ function startServer() {
                     }
 
                     const { username, password, presenter } = checkXSS(decodeToken(token));
-
-                    console.log('Debug username, password, presenter', { username, password, presenter });
 
                     peerUsername = username;
                     peerPassword = password;
@@ -560,6 +557,7 @@ function startServer() {
             }
 
             if (room && (hostCfg.authenticated || isPeerValid)) {
+                console.log('Success Direct Join', room);
                 return res.sendFile(views.room);
             } else {
                 return res.sendFile(views.login);
@@ -569,6 +567,9 @@ function startServer() {
 
     // join room by id
     app.get('/join/:roomId', (req, res) => {
+        
+        // Deshabilitar acceso a la sala por id
+        res.sendFile(views.notFound);
         //
         const roomId = req.params.roomId;
 
@@ -593,6 +594,7 @@ function startServer() {
 
     // not specified correctly the room id
     app.get('/join/*', (req, res) => {
+        console.log('join/*', req.url);
         res.redirect('/');
     });
 
@@ -1182,6 +1184,7 @@ function startServer() {
     // ####################################################
 
     httpsServer.listen(config.server.listen.port, () => {
+        console.log('Server started on port', config.server.listen.port);
         log.log(
             `%c
     
@@ -1221,6 +1224,8 @@ function startServer() {
         const { logLevel, logTags, rtcMinPort, rtcMaxPort, disableLiburing } = config.mediasoup.worker;
 
         log.info('WORKERS:', numWorkers);
+
+        console.log('WORKERS:', numWorkers);
 
         for (let i = 0; i < numWorkers; i++) {
             //
@@ -1280,8 +1285,8 @@ function startServer() {
     // ####################################################
 
     io.on('connection', (socket) => {
-        console.log('New socket connection', socket.id);
         socket.on('clientError', (error) => {
+            console.log('Socket clientError', error);
             try {
                 log.error('Client error', error.message);
                 socket.disconnect(true); // true indicates a forced disconnection
@@ -1291,6 +1296,7 @@ function startServer() {
         });
 
         socket.on('error', (error) => {
+            console.log('Socket error', error);
             try {
                 log.error('Socket error', error.message);
                 socket.disconnect(true); // true indicates a forced disconnection
@@ -1300,6 +1306,8 @@ function startServer() {
         });
 
         socket.on('createRoom', async ({ room_id }, callback) => {
+            console.log('createRoom', room_id);
+            // console.log('roomList', roomList);
             socket.room_id = room_id;
 
             if (roomList.has(socket.room_id)) {
@@ -1313,6 +1321,7 @@ function startServer() {
         });
 
         socket.on('join', async (dataObject, cb) => {
+            console.log('join', dataObject);
             if (!roomList.has(socket.room_id)) {
                 return cb({
                     error: 'Room does not exist',
@@ -1368,6 +1377,11 @@ function startServer() {
                             presenter === 'true' ||
                             (config.presenters.join_first && room.getPeers().size === 0);
 
+                        //data.peer_info.presenter = is_presenter;
+                        data.peer_info.peer_presenter = is_presenter;
+
+                        console.log('Is presenter', is_presenter);  
+
                         log.debug('[Join] - HOST PROTECTED - USER AUTH check peer', {
                             ip: peer_ip,
                             peer_username: username,
@@ -1410,6 +1424,8 @@ function startServer() {
                 return cb('isBanned');
             }
 
+            console.log(data);
+
             room.addPeer(new Peer(socket.id, data));
 
             const activeRooms = getActiveRooms();
@@ -1429,6 +1445,7 @@ function startServer() {
                 peer_uuid: peer_uuid,
                 is_presenter: is_presenter,
             };
+            
             // first we check if the username match the presenters username
             if (config.presenters && config.presenters.list && config.presenters.list.includes(peer_name)) {
                 presenters[socket.room_id][socket.id] = presenter;
@@ -1444,6 +1461,8 @@ function startServer() {
             const isPresenter = peer_token
                 ? is_presenter
                 : await isPeerPresenter(socket.room_id, socket.id, peer_name, peer_uuid);
+
+            console.log('Is presenter', isPresenter);
 
             const peer = room.getPeer(socket.id);
 
