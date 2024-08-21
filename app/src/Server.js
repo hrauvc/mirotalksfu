@@ -453,7 +453,8 @@ function startServer() {
                 res.sendFile(views.login);
             }
         } else {
-            res.sendFile(views.landing);
+            res.sendFile(views.notFound);
+            // res.sendFile(views.landing);
         }
     });
 
