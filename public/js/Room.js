@@ -3933,6 +3933,7 @@ function getParticipantsList(peers) {
     }
 
     // ALL
+    /*
     li += `
     <li id="all"
         data-to-id="all"
@@ -3948,6 +3949,7 @@ function getParticipantsList(peers) {
             <div class="name">Public chat</div>
             <div class="status"> <i class="fa fa-circle online"></i> online ${participantsCount}</div>
         </div>`;
+        */
 
     // ONLY PRESENTER CAN EXECUTE THIS CMD
     if (!isRulesActive || isPresenter) {
