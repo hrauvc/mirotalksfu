@@ -6,5 +6,14 @@ script.setAttribute('src', 'https://translate.google.com/translate_a/element.js?
 document.head.appendChild(script);
 
 function googleTranslateElementInit() {
-    new google.translate.TranslateElement({ pageLanguage: 'en' }, 'google_translate_element');
+    new google.translate.TranslateElement({ pageLanguage: 'es' }, 'google_translate_element');
+
+    // Forzar la traducción automática al idioma deseado (ejemplo: inglés)
+    setTimeout(() => {
+        const select = document.querySelector('select.goog-te-combo');
+        if (select) {
+            select.value = 'es';  // Cambia 'en' por el código de idioma que desees (ejemplo: 'fr' para francés)
+            select.dispatchEvent(new Event('change'));
+        }
+    }, 1000); // Esperar a que se cargue el traductor y la lista de idiomas
 }
