@@ -16,7 +16,7 @@ class LocalStorage {
         };
 
         this.SFU_SETTINGS = {
-            share_on_join: true, // popup message on join
+            share_on_join: false, // popup message on join
             show_chat_on_msg: true, // show chat on new message
             transcript_show_on_msg: true, // show transcript on new message
             speech_in_msg: false, // speech incoming message
@@ -27,8 +27,8 @@ class LocalStorage {
             moderator_video_cant_unhide: false, // Everyone can't unhide themselves
             moderator_screen_cant_share: false, // Everyone can't share screen
             moderator_chat_cant_privately: false, // Everyone can't chat privately, only Public chat allowed
-            moderator_chat_cant_chatgpt: false, // Everyone can't chat with ChatGPT
-            moderator_disconnect_all_on_leave: false, // Disconnect all participants on leave room
+            moderator_chat_cant_chatgpt: true, // Everyone can't chat with ChatGPT
+            moderator_disconnect_all_on_leave: true, // Disconnect all participants on leave room
             mic_auto_gain_control: false,
             mic_echo_cancellations: true,
             mic_noise_suppression: true,
@@ -40,11 +40,11 @@ class LocalStorage {
             video_fps: 0, // default 1280x768 30fps
             screen_fps: 3, // default 1920x1080 15fps
             broadcasting: false, // default false (one to many a/v streaming)
-            lobby: false, // default false
+            lobby: true, // default false
             pitch_bar: true, // volume indicator
             sounds: true, // room notify sounds
-            host_only_recording: false, // presenter
-            rec_prioritize_h264: false, // Prioritize h.264 with AAC or h.264 with Opus codecs over VP8 with Opus or VP9 with Opus codecs
+            host_only_recording: true, // presenter
+            rec_prioritize_h264: true, // Prioritize h.264 with AAC or h.264 with Opus codecs over VP8 with Opus or VP9 with Opus codecs
             rec_server: false, // The recording will be stored on the server rather than locally
             video_obj_fit: 2, // cover
             video_controls: 0, // off
