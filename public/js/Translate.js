@@ -9,6 +9,7 @@ function googleTranslateElementInit() {
     new google.translate.TranslateElement({ pageLanguage: 'en' }, 'google_translate_element');
 
     // Forzar la traducción automática al idioma deseado (ejemplo: inglés)
+    /*
     setTimeout(() => {
         console.log('############################')
         console.log('###### Auto Translate ######')
@@ -23,4 +24,5 @@ function googleTranslateElementInit() {
         }
 
     }, 1000); // Esperar a que se cargue el traductor y la lista de idiomas
+    */
 }
