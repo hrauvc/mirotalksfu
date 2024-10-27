@@ -11,7 +11,7 @@ if (location.href.substr(0, 5) !== 'https') location.href = 'https' + location.h
  * @license For commercial or closed source, contact us at license.mirotalk@gmail.com or purchase directly via CodeCanyon
  * @license CodeCanyon: https://codecanyon.net/item/mirotalk-sfu-webrtc-realtime-video-conferences/40769970
  * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.5.64
+ * @version 1.6.10
  *
  */
 
@@ -213,6 +213,7 @@ let isEnumerateVideoDevices = false;
 let isAudioAllowed = false;
 let isVideoAllowed = false;
 let isVideoPrivacyActive = false;
+let isInitVideoMirror = true;
 let isRecording = false;
 let isAudioVideoAllowed = false;
 let isParticipantsListOpen = false;
@@ -383,6 +384,7 @@ function refreshMainButtonsToolTipPlacement() {
         setTippy('shareButton', 'Share room', placement);
         setTippy('startRecButton', 'Start recording', placement);
         setTippy('stopRecButton', 'Stop recording', placement);
+        setTippy('fullScreenButton', 'Toggle full screen', placement);
         setTippy('emojiRoomButton', 'Toggle emoji reaction', placement);
         setTippy('chatButton', 'Toggle the chat', placement);
         setTippy('pollButton', 'Toggle the poll', placement);
@@ -391,6 +393,7 @@ function refreshMainButtonsToolTipPlacement() {
         setTippy('whiteboardButton', 'Toggle the whiteboard', placement);
         setTippy('snapshotRoomButton', 'Snapshot screen, window, or tab', placement);
         setTippy('settingsButton', 'Toggle the settings', placement);
+        setTippy('restartICEButton', 'Restart ICE', placement);
         setTippy('aboutButton', 'About this project', placement);
 
         // Bottom buttons
@@ -468,6 +471,7 @@ async function initRoom() {
     } else {
         setButtonsInit();
         handleSelectsInit();
+        handleUsernameEmojiPicker();
         await whoAreYou();
         await setSelectsInit();
     }
@@ -655,6 +659,14 @@ function setupInitButtons() {
     };
     initStopScreenButton.onclick = async () => {
         await toggleScreenSharing();
+    };
+    initVideoMirrorButton.onclick = () => {
+        initVideo.classList.toggle('mirror');
+        isInitVideoMirror = initVideo.classList.contains('mirror');
+    };
+    initUsernameEmojiButton.onclick = () => {
+        getId('usernameInput').value = '';
+        toggleUsernameEmoji();
     };
 }
 
@@ -932,7 +944,11 @@ async function whoAreYou() {
         });
         const serverButtons = response.data.message;
         if (serverButtons) {
-            BUTTONS = serverButtons;
+            // Merge serverButtons into BUTTONS, keeping the existing keys in BUTTONS if they are not present in serverButtons
+            BUTTONS = {
+                ...BUTTONS, // Spread current BUTTONS first to keep existing keys
+                ...serverButtons, // Overwrite or add new keys from serverButtons
+            };
             console.log('04 ----> AXIOS ROOM BUTTONS SETTINGS', {
                 serverButtons: serverButtons,
                 clientButtons: BUTTONS,
@@ -990,7 +1006,7 @@ async function whoAreYou() {
         title: BRAND.app.name,
         input: 'text',
         inputPlaceholder: 'Enter your email or name',
-        inputAttributes: { maxlength: 32 },
+        inputAttributes: { maxlength: 32, id: 'usernameInput' },
         inputValue: default_name,
         html: initUser, // Inject HTML
         confirmButtonText: `Join meeting`,
@@ -1009,6 +1025,9 @@ async function whoAreYou() {
             peer_name = name;
         },
     }).then(async () => {
+        if (!usernameEmoji.classList.contains('hidden')) {
+            usernameEmoji.classList.add('hidden');
+        }
         if (initStream && !joinRoomWithScreen) {
             await stopTracks(initStream);
             elemDisplay('initVideo', false);
@@ -1362,6 +1381,7 @@ function roomIsReady() {
         if (navigator.getDisplayMedia || navigator.mediaDevices.getDisplayMedia) {
             if (BUTTONS.main.startScreenButton) {
                 show(startScreenButton);
+                show(ScreenQualityDiv);
                 show(ScreenFpsDiv);
             }
             BUTTONS.main.snapshotRoomButton && show(snapshotRoomButton);
@@ -1412,6 +1432,7 @@ function roomIsReady() {
     if (room_password) {
         lockRoomButton.click();
     }
+    //show(restartICEButton); // TEST
 }
 
 function elemDisplay(element, display, mode = 'block') {
@@ -1766,7 +1787,7 @@ function handleButtons() {
         transcription.stop();
     };
     fullScreenButton.onclick = () => {
-        rc.toggleFullScreen();
+        rc.toggleRoomFullScreen();
     };
     recordingImage.onclick = () => {
         isRecording ? stopRecButton.click() : startRecButton.click();
@@ -1970,9 +1991,9 @@ function handleButtons() {
     aboutButton.onclick = () => {
         showAbout();
     };
-    // restartICE.onclick = async () => {
-    //     await rc.restartIce();
-    // };
+    restartICEButton.onclick = async () => {
+        await rc.restartIce();
+    };
 }
 
 // ####################################################
@@ -1986,6 +2007,8 @@ function setButtonsInit() {
         setTippy('initAudioVideoButton', 'Toggle the audio & video', 'top');
         setTippy('initStartScreenButton', 'Toggle screen sharing', 'top');
         setTippy('initStopScreenButton', 'Toggle screen sharing', 'top');
+        setTippy('initVideoMirrorButton', 'Toggle video mirror', 'top');
+        setTippy('initUsernameEmojiButton', 'Toggle username emoji', 'top');
     }
     if (!isAudioAllowed) hide(initAudioButton);
     if (!isVideoAllowed) hide(initVideoButton);
@@ -2252,11 +2275,13 @@ function handleCameraMirror(video) {
         // Desktop devices...
         if (!video.classList.contains('mirror')) {
             video.classList.toggle('mirror');
+            isInitVideoMirror = true;
         }
     } else {
         // Mobile, Tablet, IPad devices...
         if (video.classList.contains('mirror')) {
             video.classList.remove('mirror');
+            isInitVideoMirror = false;
         }
     }
 }
@@ -2270,6 +2295,9 @@ function handleSelects() {
     };
     videoQuality.onchange = () => {
         rc.closeThenProduce(RoomClient.mediaType.video, videoSelect.value);
+    };
+    screenQuality.onchange = () => {
+        rc.closeThenProduce(RoomClient.mediaType.screen);
     };
     videoFps.onchange = () => {
         rc.closeThenProduce(RoomClient.mediaType.video, videoSelect.value);
@@ -2351,11 +2379,6 @@ function handleSelects() {
         rc.roomMessage('pitchBar', isPitchBarEnabled);
         localStorageSettings.pitch_bar = isPitchBarEnabled;
         lS.setSettings(localStorageSettings);
-        e.target.blur();
-    };
-    switchVideoMirror.onchange = (e) => {
-        rc.toggleVideoMirror();
-        rc.roomMessage('toggleVideoMirror', e.currentTarget.checked);
         e.target.blur();
     };
     switchSounds.onchange = (e) => {
@@ -2674,6 +2697,24 @@ function handleInputs() {
 // EMOJI PIKER
 // ####################################################
 
+function toggleUsernameEmoji() {
+    getId('usernameEmoji').classList.toggle('hidden');
+}
+
+function handleUsernameEmojiPicker() {
+    const pickerOptions = {
+        theme: 'dark',
+        onEmojiSelect: addEmojiToUsername,
+    };
+    const emojiUsernamePicker = new EmojiMart.Picker(pickerOptions);
+    getId('usernameEmoji').appendChild(emojiUsernamePicker);
+
+    function addEmojiToUsername(data) {
+        getId('usernameInput').value += data.native;
+        toggleUsernameEmoji();
+    }
+}
+
 function handleChatEmojiPicker() {
     const pickerOptions = {
         theme: 'dark',
@@ -2909,7 +2950,6 @@ function handleRoomClientEvents() {
         show(stopVideoButton);
         setColor(startVideoButton, 'red');
         setVideoButtonsDisabled(false);
-        switchVideoMirror.disabled = false;
         // if (isParticipantsListOpen) getRoomParticipants();
     });
     rc.on(RoomClient.EVENTS.pauseVideo, () => {
@@ -2932,7 +2972,6 @@ function handleRoomClientEvents() {
         show(startVideoButton);
         setVideoButtonsDisabled(false);
         isVideoPrivacyActive = false;
-        switchVideoMirror.disabled = true;
         // if (isParticipantsListOpen) getRoomParticipants();
     });
     rc.on(RoomClient.EVENTS.startScreen, () => {
@@ -3435,7 +3474,7 @@ function whiteboardAddObj(type) {
             const text = new fabric.IText('Lorem Ipsum', {
                 top: 0,
                 left: 0,
-                fontFamily: 'Comfortaa',
+                fontFamily: 'Montserrat',
                 fill: wbCanvas.freeDrawingBrush.color,
                 strokeWidth: wbCanvas.freeDrawingBrush.width,
                 stroke: wbCanvas.freeDrawingBrush.color,
@@ -3913,12 +3952,14 @@ function getParticipantsList(peers) {
 
     // CHAT-GPT
     if (chatGPT) {
+        const chatgpt_active = !rc.isChatOpen && rc.chatPeerName === 'ChatGPT' ? ' active' : '';
+
         li = `
         <li 
             id="ChatGPT" 
             data-to-id="ChatGPT"
             data-to-name="ChatGPT"
-            class="clearfix" 
+            class="clearfix${chatgpt_active}" 
             onclick="rc.showPeerAboutAndMessages(this.id, 'ChatGPT', event)"
         >
             <img 
@@ -3932,13 +3973,15 @@ function getParticipantsList(peers) {
         </li>`;
     }
 
+    const public_chat_active = !rc.isChatOpen && rc.chatPeerName === 'all' ? ' active' : '';
+
     // ALL
     
     li += `
     <li id="all"
         data-to-id="all"
         data-to-name="all"
-        class="clearfix active" 
+        class="clearfix${public_chat_active}" 
         onclick="rc.showPeerAboutAndMessages(this.id, 'all', event)"
     >
         <img 
@@ -4015,6 +4058,8 @@ function getParticipantsList(peers) {
         const peer_id = peer_info.peer_id;
         const avatarImg = getParticipantAvatar(peer_name);
 
+        const peer_chat_active = !rc.isChatOpen && rc.chatPeerId === peer_id ? ' active' : '';
+
         // NOT ME
         if (socket.id !== peer_id) {
             // PRESENTER HAS MORE OPTIONS
@@ -4024,7 +4069,7 @@ function getParticipantsList(peers) {
                     id='${peer_id}'
                     data-to-id="${peer_id}" 
                     data-to-name="${peer_name}"
-                    class="clearfix" 
+                    class="clearfix${peer_chat_active}" 
                     onclick="rc.showPeerAboutAndMessages(this.id, '${peer_name}', event)"
                 >
                     <img
@@ -4100,7 +4145,7 @@ function getParticipantsList(peers) {
                     id='${peer_id}' 
                     data-to-id="${peer_id}"
                     data-to-name="${peer_name}"
-                    class="clearfix" 
+                    class="clearfix${peer_chat_active}" 
                     onclick="rc.showPeerAboutAndMessages(this.id, '${peer_name}', event)"
                 >
                 <img 
@@ -4477,7 +4522,7 @@ function showAbout() {
         imageUrl: image.about,
         customClass: { image: 'img-about' },
         position: 'center',
-        title: 'WebRTC SFU v1.5.64',
+        title: 'WebRTC SFU v1.6.10',
         html: `
         <br />
         <div id="about">

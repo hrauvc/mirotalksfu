@@ -76,7 +76,9 @@ module.exports = {
                 - dir: Directory where your video files are stored to be streamed via RTMP.
                 - ffmpeg: Path of the ffmpeg installation on the system (which ffmpeg)
 
-                Important: Ensure your RTMP server is operational before proceeding. You can start the server by running the following command:
+                Important: Before proceeding, make sure your RTMP server is up and running. 
+                For more information, refer to the documentation here: https://docs.mirotalk.com/mirotalk-sfu/rtmp/.
+                You can start the server by running the following command:
                 - Start: npm run nms-start - Start the RTMP server.
                 - Stop: npm run npm-stop - Stop the RTMP server.
                 - Logs: npm run npm-logs - View the logs of the RTMP server.
@@ -119,6 +121,7 @@ module.exports = {
             s3Upload: true,
             generatePresignedUrl: true,
             slack: true,
+            mattermost: true,
             //...
         },
     },
@@ -170,8 +173,14 @@ module.exports = {
         user_auth: true,
         users_from_db: false, // if true ensure that api.token is also set to true.
         users_api_endpoint: 'http://localhost:9000/api/v1/user/isAuth',
+        users_api_room_allowed: 'http://localhost:9000/api/v1/user/isRoomAllowed',
+        users_api_rooms_allowed: 'http://localhost:9000/api/v1/user/roomsAllowed',
+        api_room_exists: 'http://localhost:9000/api/v1/room/exists',
         //users_api_endpoint: 'https://webrtc.mirotalk.com/api/v1/user/isAuth',
-        users_api_secret_key: 'dNC}jG3>vf}KnI_9w=(shJ_akRetPdMA:By{.Uy4C3%^9Q<%y*&#fC0.w}ElrI[',
+        //users_api_room_allowed: 'https://webrtc.mirotalk.com/api/v1/user/isRoomAllowed',
+        //users_api_rooms_allowed: 'https://webrtc.mirotalk.com/api/v1/user/roomsAllowed',
+        //api_room_exists: 'https://webrtc.mirotalk.com//api/v1/room/exists',
+        users_api_secret_key: 'mirotalkweb_default_secret',
         users: [
             {
                 username: 'a5dfb1b0-1b1b-4b1b-8b1b-1bsdfb',
@@ -235,7 +244,7 @@ module.exports = {
         basePath: 'https://api.heygen.com',
         apiKey: '',
         systemLimit:
-            'You are a streaming avatar from MiroTalk SFU, an industry-leading product that specialize in videos communications. Audience will try to have a conversation with you, please try answer the questions or respond their comments naturally, and concisely. - please try your best to response with short answers, and only answer the last question.',
+            'You are a streaming avatar from MiroTalk SFU, an industry-leading product that specialize in videos communications.',
     },
     email: {
         /*
@@ -270,6 +279,39 @@ module.exports = {
         DSN: '',
         tracesSampleRate: 0.5,
     },
+    mattermost: {
+        /*
+        Mattermost: https://mattermost.com
+            1. Navigate to Main Menu > Integrations > Slash Commands in Mattermost.
+            2. Click on Add Slash Command and configure the following settings:
+                - Title: Enter a descriptive title (e.g., `SFU Command`).
+                - Command Trigger Word: Set the trigger word to `sfu`.
+                - Callback URLs: Enter the URL for your Express server (e.g., `https://yourserver.com/mattermost`).
+                - Request Method: Select POST.
+                - Enable Autocomplete: Check the box for Autocomplete.
+                - Autocomplete Description: Provide a brief description (e.g., `Get MiroTalk SFU meeting room`).
+            3. Save the slash command and copy the generated token (YourMattermostToken).   
+        */
+        enabled: false,
+        serverUrl: 'YourMattermostServerUrl',
+        username: 'YourMattermostUsername',
+        password: 'YourMattermostPassword',
+        token: 'YourMattermostToken',
+        commands: [
+            {
+                name: '/sfu',
+                message: 'Here is your meeting room:',
+            },
+            //....
+        ],
+        texts: [
+            {
+                name: '/sfu',
+                message: 'Here is your meeting room:',
+            },
+            //....
+        ],
+    },
     slack: {
         /*
         Slack
@@ -280,6 +322,28 @@ module.exports = {
         */
         enabled: false,
         signingSecret: '',
+    },
+    discord: {
+        /*
+        Discord
+            1. Go to the Discord Developer Portal: https://discord.com/developers/.
+            2. Create a new application and name it whatever you like.
+            3. Under the Bot section, click Add Bot and confirm.
+            4. Copy your bot token (this will be used later).
+            5. Under OAuth2 -> URL Generator, select bot scope, and under Bot Permissions, select the permissions you need (e.g., Send Messages and Read Messages).
+            6. Copy the generated invite URL, open it in a browser, and invite the bot to your Discord server.
+            7. Add the Bot in the Server channel permissions
+            8. Type /sfu (commands.name) in the channel, the response will return a URL for the meeting
+        */
+        enabled: false,
+        token: '',
+        commands: [
+            {
+                name: '/sfu',
+                message: 'Here is your SFU meeting room:',
+                baseUrl: 'https://sfu.mirotalk.com/join/',
+            },
+        ],
     },
     IPLookup: {
         /*
@@ -390,6 +454,7 @@ module.exports = {
             },
             producerVideo: {
                 videoPictureInPicture: true,
+                videoMirrorButton: true,
                 fullScreenButton: true,
                 snapShotButton: true,
                 muteAudioButton: true,
@@ -397,6 +462,7 @@ module.exports = {
             },
             consumerVideo: {
                 videoPictureInPicture: true,
+                videoMirrorButton: true,
                 fullScreenButton: true,
                 snapShotButton: true,
                 focusVideoButton: true,

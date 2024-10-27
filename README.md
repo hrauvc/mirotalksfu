@@ -79,6 +79,8 @@
 -   Right-click options on video elements for additional controls.
 -   Supports [REST API](app/api/README.md) (Application Programming Interface).
 -   Integration with [Slack](https://api.slack.com/apps/) for enhanced communication.
+-   Integration with [Discord](https://discord.com) for enhanced communication.
+-   Integration with [Mattermost](https://mattermost.com/) for enhanced communication.
 -   Utilizes [Sentry](https://sentry.io/) for error reporting.
 -   And much more...
 
@@ -235,6 +237,10 @@ $ PORT=3011 npm start
 -   Install [docker engine](https://docs.docker.com/engine/install/) and [docker compose](https://docs.docker.com/compose/install/)
 
 ```bash
+# Clone this repo
+$ git clone https://github.com/miroslavpejic85/mirotalksfu.git
+# Go to to dir mirotalksfu
+$ cd mirotalksfu
 # Copy app/src/config.template.js in app/src/config.js IMPORTANT (edit it according to your needs)
 $ cp app/src/config.template.js app/src/config.js
 # Copy docker-compose.template.yml in docker-compose.yml and edit it if needed
@@ -312,9 +318,9 @@ To set up your own instance of `MiroTalk SFU` on a dedicated cloud server, pleas
 
 <br/>
 
-[![DigitalOcean Referral Badge](https://web-platforms.sfo2.cdn.digitaloceanspaces.com/WWW/Badge%201.svg)](https://www.digitalocean.com/?refcode=1070207afbb1&utm_campaign=Referral_Invite&utm_medium=Referral_Program&utm_source=badge)
+[![DigitalOcean Referral Badge](https://web-platforms.sfo2.cdn.digitaloceanspaces.com/WWW/Badge%201.svg)](https://m.do.co/c/1070207afbb1)
 
-For personal use, you can start with a single $5 a month cloud server and scale up as needed. You can use [this link](https://m.do.co/c/1070207afbb1) to get a `$100 credit for the first 60 days`.
+For personal use, you can start with a single $5 a month cloud server and scale up as needed. You can use [this link](https://m.do.co/c/1070207afbb1) to get a `$200 credit for the first 60 days`.
 
 </details>
 
